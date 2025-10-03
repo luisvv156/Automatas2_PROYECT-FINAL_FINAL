@@ -1,5 +1,4 @@
 package ast;
-
 public class ReturnNode extends ASTNode {
     private ASTNode value;
 
@@ -13,5 +12,9 @@ public class ReturnNode extends ASTNode {
     @Override
     public void accept(ASTVisitor visitor) {
         visitor.visit(this);
+    }
+
+    public Object acceptExpression(ExpressionVisitor visitor) {
+        return visitor.visit(this);
     }
 }

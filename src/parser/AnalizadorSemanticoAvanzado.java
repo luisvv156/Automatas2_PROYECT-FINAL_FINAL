@@ -62,7 +62,8 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         }
         fastTypeCache.put(cacheKey, true);
 
-        if (scopeManager.containsSymbol(functionName)) {
+        // CORREGIDO: Cambiar containsSymbol por resolve para verificar si ya existe
+        if (scopeManager.resolve(functionName) != null) {
             errors.agregarError(node.getLineNumber(), 
                 "Función '" + functionName + "' ya declarada", "Semántico");
             exitAnalysis();
@@ -85,7 +86,7 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         
         scopeManager.enterScope();
         
-        for (ASTNode param : node.getParameters()) {
+        for (VariableDeclNode param : node.getParameters()) { // CORREGIDO: Tipo específico
             param.accept(this);
         }
         
@@ -103,9 +104,10 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
     @Override
     public void visit(VariableDeclNode node) {
         enterAnalysis();
-        String varName = node.getVariableName();
+        String varName = node.getName(); // CORREGIDO: Cambiar getVariableName() por getName()
         
-        if (scopeManager.containsSymbol(varName)) {
+        // CORREGIDO: Cambiar containsSymbol por resolve
+        if (scopeManager.resolve(varName) != null) {
             errors.agregarError(node.getLineNumber(), 
                 "Variable '" + varName + "' ya declarada", "Semántico");
             exitAnalysis();
@@ -181,7 +183,7 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
     public void visit(BlockNode node) {
         enterAnalysis();
         scopeManager.enterScope();
-            for (ASTNode child : node.getStatements()) {
+        for (ASTNode child : node.getStatements()) {
             child.accept(this);
         }
         scopeManager.exitScope();
@@ -227,7 +229,7 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         String varName = node.getName();
         Symbol symbol = scopeManager.resolve(varName);
         
-        if (symbol == null) {
+        if (symbol == null && !node.isBooleanLiteral()) { // CORREGIDO: Agregar verificación de boolean literal
             errors.agregarError(node.getLineNumber(), 
                 "Variable '" + varName + "' no declarada", "Semántico");
         }
@@ -270,7 +272,16 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
     @Override
     public void visit(PrintNode node) {
         enterAnalysis();
-        node.getValue().accept(this);
+        if (node.getValue() != null) { // CORREGIDO: Verificar si no es null
+            node.getValue().accept(this);
+        }
+        exitAnalysis();
+    }
+
+    @Override
+    public void visit(UnaryExpressionNode node) {
+        enterAnalysis(); // CORREGIDO: Agregar enter/exit analysis
+        node.getExpression().accept(this);
         exitAnalysis();
     }
 }

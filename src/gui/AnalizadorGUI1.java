@@ -7,12 +7,11 @@ import lexer.Lexer;
 import parser.Parser;
 import ast.ProgramNode;
 import semantic.SemanticAnalyzer;
-import interpreter.Interpreter; // Importar el intérprete
+import interpreter.Interpreter;
 import util.ManejadorErrores;
 import util.ErrorSemantico;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import lexer.LanguageDetector;
 
 public class AnalizadorGUI1 extends JFrame {
     private JTextArea codeArea;
@@ -109,7 +108,7 @@ public class AnalizadorGUI1 extends JFrame {
             currentProgram = null;
         });
         
-        // Ejemplo de código por defectoo
+        // Ejemplo de código por defecto
         codeArea.setText("var x: int = 10;\nvar y: int = 5;\nvar resultado: int = x + y;\nprint(resultado);\n\nfunction saludar() {\n    print(\"¡Hola desde la función!\");\n}\n\nsaludar();");
     }
 
@@ -148,8 +147,9 @@ public class AnalizadorGUI1 extends JFrame {
             
             long semanticTime = System.currentTimeMillis();
             
+            // CORREGIDO: Usar métodos disponibles en ManejadorErrores
             if (errores.hayErrores()) {
-                resultArea.append("\n✗ Se encontraron " + errores.getCantidadErrores() + " errores semánticos:\n");
+                resultArea.append("\n✗ Se encontraron " + errores.getErrores().size() + " errores semánticos:\n");
                 for (ErrorSemantico error : errores.getErrores()) {
                     resultArea.append("• Línea " + error.getLinea() + ": " + error.getMensaje() + "\n");
                 }
@@ -203,8 +203,10 @@ public class AnalizadorGUI1 extends JFrame {
             
             // Mostrar la salida capturada
             String output = baos.toString();
-            if (!output.isEmpty()) {
+            if (!output.trim().isEmpty()) {
                 resultArea.append("Salida:\n" + output);
+            } else {
+                resultArea.append("(No hubo salida)\n");
             }
             
             resultArea.append("\n✓ Ejecución completada en " + (executionTime - startTime) + "ms");
@@ -219,6 +221,9 @@ public class AnalizadorGUI1 extends JFrame {
             
             resultArea.append("\n❌ Error durante la ejecución: " + errorMessage);
             setStatus("Error en ejecución", Color.RED);
+            
+            // Imprimir stack trace para debugging
+            ex.printStackTrace();
         }
     }
 

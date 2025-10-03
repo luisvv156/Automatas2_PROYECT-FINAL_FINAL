@@ -8,9 +8,8 @@ public class Lexer {
     private int start = 0;
     private int current = 0;
     private int line = 1;
-    
-    private static final Map<String, TokenType> keywords;
 
+    private static final Map<String, TokenType> keywords;
 
     static {
         keywords = new HashMap<>();
@@ -21,39 +20,18 @@ public class Lexer {
         keywords.put("else", TokenType.ELSE);
         keywords.put("while", TokenType.WHILE);
         keywords.put("return", TokenType.RETURN);
-        //keywords.put("print", TokenType.PRINT);
-        
-        // Tipos de datos (agregados)
+        keywords.put("print", TokenType.PRINT);
+
+        // Tipos de datos
         keywords.put("int", TokenType.INT);
         keywords.put("float", TokenType.FLOAT);
         keywords.put("string", TokenType.STRING);
         keywords.put("boolean", TokenType.BOOLEAN);
         keywords.put("void", TokenType.VOID);
-        
-        // Valores booleanos
+
+        // Booleanos
         keywords.put("true", TokenType.TRUE);
         keywords.put("false", TokenType.FALSE);
-        
-        // NUEVAS KEYWORDS PARA JAVA
-       // keywords.put("public", TokenType.PUBLIC);
-        //keywords.put("private", TokenType.PRIVATE);
-        //keywords.put("protected", TokenType.PROTECTED);
-        //keywords.put("class", TokenType.CLASS);
-        //keywords.put("import", TokenType.IMPORT);
-        //keywords.put("package", TokenType.PACKAGE);
-        //keywords.put("static", TokenType.STATIC);
-        //keywords.put("final", TokenType.FINAL);
-        //keywords.put("this", TokenType.THIS);
-        //keywords.put("new", TokenType.NEW);
-        //keywords.put("extends", TokenType.EXTENDS);
-        //keywords.put("implements", TokenType.IMPLEMENTS);
-        //keywords.put("abstract", TokenType.ABSTRACT);
-        //keywords.put("interface", TokenType.INTERFACE);
-        //keywords.put("try", TokenType.TRY);
-        //keywords.put("catch", TokenType.CATCH);
-        //keywords.put("finally", TokenType.FINALLY);
-        //keywords.put("throw", TokenType.THROW);
-        //keywords.put("throws", TokenType.THROWS);
     }
 
     public Lexer(String source) {
@@ -80,22 +58,27 @@ public class Lexer {
             case ',': return makeToken(TokenType.COMMA, null);
             case ';': return makeToken(TokenType.SEMICOLON, null);
             case ':': return makeToken(TokenType.COLON, null);
-            
+
             case '+': return makeToken(TokenType.PLUS, null);
             case '-': return makeToken(TokenType.MINUS, null);
             case '*': return makeToken(TokenType.MULTIPLY, null);
             case '/': return makeToken(TokenType.DIVIDE, null);
-            
+
             case '=': return match('=') ? makeToken(TokenType.EQUALS, null) : makeToken(TokenType.ASSIGN, null);
             case '!': return match('=') ? makeToken(TokenType.NOT_EQUALS, null) : makeToken(TokenType.NOT, null);
             case '<': return match('=') ? makeToken(TokenType.LESS_EQUAL, null) : makeToken(TokenType.LESS, null);
             case '>': return match('=') ? makeToken(TokenType.GREATER_EQUAL, null) : makeToken(TokenType.GREATER, null);
-            
-            case '&': return match('&') ? makeToken(TokenType.AND, null) : null;
-            case '|': return match('|') ? makeToken(TokenType.OR, null) : null;
+
+            case '&': 
+                if (match('&')) return makeToken(TokenType.AND, null);
+                throw new RuntimeException("Caracter inválido '&' en línea " + line);
+
+            case '|': 
+                if (match('|')) return makeToken(TokenType.OR, null);
+                throw new RuntimeException("Caracter inválido '|' en línea " + line);
         }
 
-        return makeToken(TokenType.EOF, "");
+        throw new RuntimeException("Caracter inesperado '" + c + "' en línea " + line);
     }
 
     private Token number() {
@@ -113,23 +96,20 @@ public class Lexer {
 
     private Token identifier() {
         while (Character.isLetterOrDigit(peek())) advance();
-
         String text = source.substring(start, current);
-        TokenType type = keywords.get(text);
-        if (type == null) type = TokenType.IDENTIFIER;
-
+        TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
         return makeToken(type, text);
     }
 
     private Token string() {
         while (peek() != '"' && !isAtEnd()) {
-            if (peek() == '\n') line++;
+            if (peek() == '\n') line++;  // ← ESTE ES EL PROBLEMA
             advance();
         }
 
-        if (isAtEnd()) return makeToken(TokenType.EOF, "");
+        if (isAtEnd()) throw new RuntimeException("Cadena no cerrada al final del archivo");
 
-        advance(); // Consume the closing "
+        advance(); // consume la comilla de cierre
         String value = source.substring(start + 1, current - 1);
         return makeToken(TokenType.STRING_LITERAL, value);
     }
@@ -156,21 +136,41 @@ public class Lexer {
         current++;
         return true;
     }
-
     private void skipWhitespace() {
         while (!isAtEnd()) {
             char c = peek();
             switch (c) {
-                case ' ': case '\r': case '\t': advance(); break;
-                case '\n': line++; advance(); break;
-                case '/': 
+                case ' ': case '\r': case '\t': 
+                    advance(); 
+                    break;
+                case '\n': 
+                    line++; 
+                    advance(); 
+                    break;
+                case '/':
                     if (peekNext() == '/') {
+                        // Comentario de una línea - consumir hasta newline o EOF
                         while (peek() != '\n' && !isAtEnd()) advance();
+                    } else if (peekNext() == '*') {
+                        // Comentario multilínea
+                        advance(); advance(); // Consume "/*"
+                        while (!isAtEnd()) {
+                            if (peek() == '*' && peekNext() == '/') {
+                                advance(); advance(); // Consume "*/"
+                                break;
+                            }
+                            if (peek() == '\n') line++;
+                            advance();
+                        }
+                        if (isAtEnd()) {
+                            throw new RuntimeException("Comentario multilínea no cerrado en línea " + line);
+                        }
                     } else {
-                        return;
+                        return; // Es una división, no comentario
                     }
                     break;
-                default: return;
+                default: 
+                    return;
             }
         }
     }

@@ -1,3 +1,4 @@
+// CallNode.java (usar esta versión)
 package ast;
 
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ public class CallNode extends ASTNode {
     }
 
     public String getFunctionName() { return functionName; }
-    public List<ASTNode> getArguments() { return new ArrayList<>(arguments); }
+    public List<ASTNode> getArguments() { return arguments; }
 
     @Override
     public void accept(ASTVisitor visitor) {

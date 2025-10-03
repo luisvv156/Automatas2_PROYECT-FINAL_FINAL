@@ -16,10 +16,16 @@ public class ExpressionEvaluator implements ASTVisitor {
         return result;
     }
 
+    // Método auxiliar para evaluar recursivamente
+    private Object evaluateNode(ASTNode node) {
+        node.accept(this);
+        return result;
+    }
+
     @Override
     public void visit(BinaryExpression node) {
-        Object leftVal = evaluate(node.getLeft());
-        Object rightVal = evaluate(node.getRight());
+        Object leftVal = evaluateNode(node.getLeft());
+        Object rightVal = evaluateNode(node.getRight());
 
         if (leftVal == null || rightVal == null) {
             throw new RuntimeException("Variable no definida en expresión");
@@ -52,20 +58,69 @@ public class ExpressionEvaluator implements ASTVisitor {
                 }
                 result = ((Number) leftVal).doubleValue() / ((Number) rightVal).doubleValue();
                 break;
+            case "==":
+                result = leftVal.equals(rightVal);
+                break;
+            case "!=":
+                result = !leftVal.equals(rightVal);
+                break;
+            case "<":
+                result = ((Number) leftVal).doubleValue() < ((Number) rightVal).doubleValue();
+                break;
+            case ">":
+                result = ((Number) leftVal).doubleValue() > ((Number) rightVal).doubleValue();
+                break;
+            case "<=":
+                result = ((Number) leftVal).doubleValue() <= ((Number) rightVal).doubleValue();
+                break;
+            case ">=":
+                result = ((Number) leftVal).doubleValue() >= ((Number) rightVal).doubleValue();
+                break;
+            case "&&":
+                result = (Boolean) leftVal && (Boolean) rightVal;
+                break;
+            case "||":
+                result = (Boolean) leftVal || (Boolean) rightVal;
+                break;
             default:
                 throw new RuntimeException("Operador no soportado: " + node.getOperator());
         }
     }
-        @Override
-    public void visit(PrintNode node) {
-        // No necesita implementación para evaluación de expresiones
+
+    @Override
+    public void visit(UnaryExpressionNode node) {
+        Object exprValue = evaluateNode(node.getExpression());
+        
+        switch (node.getOperator()) {
+            case "-":
+                if (exprValue instanceof Number) {
+                    result = -((Number) exprValue).doubleValue();
+                } else {
+                    throw new RuntimeException("Operador '-' no aplicable a tipo: " + exprValue.getClass().getSimpleName());
+                }
+                break;
+            case "!":
+                if (exprValue instanceof Boolean) {
+                    result = !(Boolean) exprValue;
+                } else {
+                    throw new RuntimeException("Operador '!' no aplicable a tipo: " + exprValue.getClass().getSimpleName());
+                }
+                break;
+            default:
+                throw new RuntimeException("Operador unario no soportado: " + node.getOperator());
+        }
     }
 
     @Override
     public void visit(IdentifierNode node) {
         result = symbolTable.get(node.getName());
-        if (result == null) {
+        if (result == null && !node.isBooleanLiteral()) {
             throw new RuntimeException("Variable no definida: " + node.getName());
+        }
+        
+        // Manejar booleanos literales "true" y "false"
+        if (node.isBooleanLiteral()) {
+            result = "true".equals(node.getName());
         }
     }
 
@@ -74,7 +129,17 @@ public class ExpressionEvaluator implements ASTVisitor {
         result = node.getValue();
     }
 
-    // Implementaciones vacías para otros nodos
+    @Override
+    public void visit(PrintNode node) {
+        // Para evaluación de expresiones, simplemente evaluamos el valor
+        if (node.getValue() != null) {
+            result = evaluateNode(node.getValue());
+        } else {
+            result = null;
+        }
+    }
+
+    // Implementaciones vacías para otros nodos (sin cambios)
     @Override public void visit(AssignmentNode node) {}
     @Override public void visit(BlockNode node) {}
     @Override public void visit(CallNode node) {}

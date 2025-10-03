@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Stack;
 
 public class Interpreter implements Evaluator {
+    @SuppressWarnings("unused") // Suprimir warning de variable no usada
     private Map<String, Object> variables;
     private Map<String, FunctionNode> functions;
     private Stack<Map<String, Object>> scopeStack;
@@ -53,6 +54,7 @@ public class Interpreter implements Evaluator {
         if (node instanceof TypeNode) return evaluate((TypeNode) node);
         if (node instanceof VariableDeclNode) return evaluate((VariableDeclNode) node);
         if (node instanceof WhileNode) return evaluate((WhileNode) node);
+        if (node instanceof UnaryExpressionNode) return evaluate((UnaryExpressionNode) node); // CORREGIDO: Agregado
         return null;
     }
 
@@ -60,6 +62,10 @@ public class Interpreter implements Evaluator {
         if (executionDepth++ > MAX_EXECUTION_DEPTH) {
             throw new RuntimeException("Profundidad de ejecución excedida");
         }
+    }
+
+    private void resetExecutionDepth() {
+        executionDepth = 0;
     }
 
     private boolean isTruthy(Object value) {
@@ -81,29 +87,91 @@ public class Interpreter implements Evaluator {
         Object left = evaluate(node.getLeft());
         Object right = evaluate(node.getRight());
 
-        // Verificar tipos
-        if (!(left instanceof Number) || !(right instanceof Number)) {
-            throw new RuntimeException("Operación numérica inválida con tipos no numéricos");
-        }
-
-        double leftNum = ((Number) left).doubleValue();
-        double rightNum = ((Number) right).doubleValue();
-
+        // CORREGIDO: Manejar operaciones con strings y booleanos
         switch (node.getOperator()) {
-            case "+": return leftNum + rightNum;
-            case "-": return leftNum - rightNum;
-            case "*": return leftNum * rightNum;
-            case "/": 
-                if (rightNum == 0) throw new RuntimeException("División por cero");
-                return leftNum / rightNum;
-            case "<": return leftNum < rightNum;
-            case ">": return leftNum > rightNum;
-            case "<=": return leftNum <= rightNum;
-            case ">=": return leftNum >= rightNum;
-            case "==": return left.equals(right);
-            case "!=": return !left.equals(right);
-            default: 
-                throw new RuntimeException("Operador no soportado: " + node.getOperator());
+            case "+":
+                // Concatenación de strings o suma numérica
+                if (left instanceof String || right instanceof String) {
+                    return left.toString() + right.toString();
+                } else if (left instanceof Number && right instanceof Number) {
+                    return ((Number) left).doubleValue() + ((Number) right).doubleValue();
+                }
+                break;
+                
+            case "-": case "*": case "/":
+                // Operaciones puramente numéricas
+                if (!(left instanceof Number) || !(right instanceof Number)) {
+                    throw new RuntimeException("Operación numérica inválida con tipos no numéricos");
+                }
+                double leftNum = ((Number) left).doubleValue();
+                double rightNum = ((Number) right).doubleValue();
+                
+                switch (node.getOperator()) {
+                    case "-": return leftNum - rightNum;
+                    case "*": return leftNum * rightNum;
+                    case "/": 
+                        if (rightNum == 0) throw new RuntimeException("División por cero");
+                        return leftNum / rightNum;
+                }
+                break;
+                
+            case "<": case ">": case "<=": case ">=":
+                // Comparaciones numéricas
+                if (!(left instanceof Number) || !(right instanceof Number)) {
+                    throw new RuntimeException("Comparación numérica inválida con tipos no numéricos");
+                }
+                double leftComp = ((Number) left).doubleValue();
+                double rightComp = ((Number) right).doubleValue();
+                
+                switch (node.getOperator()) {
+                    case "<": return leftComp < rightComp;
+                    case ">": return leftComp > rightComp;
+                    case "<=": return leftComp <= rightComp;
+                    case ">=": return leftComp >= rightComp;
+                }
+                break;
+                
+            case "==": case "!=":
+                // Comparaciones de igualdad (funcionan con cualquier tipo)
+                boolean equal = left.equals(right);
+                return node.getOperator().equals("==") ? equal : !equal;
+                
+            case "&&": case "||":
+                // Operaciones lógicas
+                if (!(left instanceof Boolean) || !(right instanceof Boolean)) {
+                    throw new RuntimeException("Operación lógica inválida con tipos no booleanos");
+                }
+                boolean leftBool = (Boolean) left;
+                boolean rightBool = (Boolean) right;
+                
+                return node.getOperator().equals("&&") ? 
+                    leftBool && rightBool : leftBool || rightBool;
+        }
+        
+        throw new RuntimeException("Operador no soportado: " + node.getOperator());
+    }
+
+    // CORREGIDO: Agregar evaluación para UnaryExpressionNode
+    public Object evaluate(UnaryExpressionNode node) {
+        Object exprValue = evaluate(node.getExpression());
+        
+        switch (node.getOperator()) {
+            case "-":
+                if (exprValue instanceof Number) {
+                    return -((Number) exprValue).doubleValue();
+                } else {
+                    throw new RuntimeException("Operador '-' no aplicable a tipo: " + 
+                        exprValue.getClass().getSimpleName());
+                }
+            case "!":
+                if (exprValue instanceof Boolean) {
+                    return !(Boolean) exprValue;
+                } else {
+                    throw new RuntimeException("Operador '!' no aplicable a tipo: " + 
+                        exprValue.getClass().getSimpleName());
+                }
+            default:
+                throw new RuntimeException("Operador unario no soportado: " + node.getOperator());
         }
     }
 
@@ -121,15 +189,15 @@ public class Interpreter implements Evaluator {
     @Override
     public Object evaluate(CallNode node) {
         // Si la función es 'print', ejecuta como PrintNode
-            if (node.getFunctionName().equals("print")) {
-                if (node.getArguments().size() > 0) {
-                    Object value = evaluate(node.getArguments().get(0));
-                    System.out.println(value);
-                    return value;
-                }
-                return null;
+        if (node.getFunctionName().equals("print")) {
+            if (node.getArguments().size() > 0) {
+                Object value = evaluate(node.getArguments().get(0));
+                System.out.println(value);
+                return value;
             }
-        
+            return null;
+        }
+    
         FunctionNode function = functions.get(node.getFunctionName());
         if (function == null) {
             throw new RuntimeException("Función no encontrada: " + node.getFunctionName());
@@ -141,10 +209,17 @@ public class Interpreter implements Evaluator {
         // Crear nuevo scope para la función
         scopeStack.push(new HashMap<>());
         
+        // Pasar parámetros
+        // NOTA: Necesitarías implementar la lógica para pasar argumentos a parámetros
+        
         // Ejecutar cuerpo de la función
         Object result = null;
-        if (function.getBody() != null) {
-            result = evaluate(function.getBody());
+        try {
+            if (function.getBody() != null) {
+                result = evaluate(function.getBody());
+            }
+        } catch (ReturnException e) {
+            result = e.getValue();
         }
         
         // Restaurar scope
@@ -169,10 +244,12 @@ public class Interpreter implements Evaluator {
     @Override
     public Object evaluate(IdentifierNode node) {
         String name = node.getName();
-        // Ignorar operadores y delimitadores
-        if (name.equals("+") || name.equals("-") || name.equals("*") || name.equals("/") || name.equals(";")) {
-            return null;
+        
+        // CORREGIDO: Manejar booleanos literales
+        if (node.isBooleanLiteral()) {
+            return "true".equals(name);
         }
+        
         // Buscar en scopes desde el más interno al más externo
         for (int i = scopeStack.size() - 1; i >= 0; i--) {
             Map<String, Object> scope = scopeStack.get(i);
@@ -232,13 +309,15 @@ public class Interpreter implements Evaluator {
         if (node.getInitialValue() != null) {
             value = evaluate(node.getInitialValue());
         }
-        scopeStack.peek().put(node.getVariableName(), value);
+        // CORREGIDO: Cambiar getVariableName() por getName()
+        scopeStack.peek().put(node.getName(), value);
         return value;
     }
 
     @Override
     public Object evaluate(WhileNode node) {
         Object result = null;
+        resetExecutionDepth(); // Resetear contador al inicio del bucle
         while (true) {
             Object condition = evaluate(node.getCondition());
             if (!isTruthy(condition)) {
@@ -252,8 +331,8 @@ public class Interpreter implements Evaluator {
         return result;
     }
 
-    // Clase interna para manejar returns
-    private static class ReturnException extends RuntimeException {
+    // CORREGIDO: Hacer pública la clase ReturnException para que sea accesible
+    public static class ReturnException extends RuntimeException {
         private final Object value;
         
         public ReturnException(Object value) {

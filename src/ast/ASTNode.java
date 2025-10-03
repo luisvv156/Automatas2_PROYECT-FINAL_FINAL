@@ -1,5 +1,6 @@
 package ast;
 
+// SOLO ESTO DEBE QUEDAR EN ASTNode.java
 public abstract class ASTNode {
     private int lineNumber;
 
@@ -12,9 +13,4 @@ public abstract class ASTNode {
     }
 
     public abstract void accept(ASTVisitor visitor);
-    
-    // Nuevo método para expression visitor
-    public Object accept(ExpressionVisitor visitor) {
-        return null;
-    }
 }

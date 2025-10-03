@@ -18,91 +18,86 @@ public class Parser {
 
     public ProgramNode parse() {
         ProgramNode program = new ProgramNode();
-        
         while (currentToken.getType() != TokenType.EOF) {
             try {
                 ASTNode declaration = parseDeclaration();
-                if (declaration != null) {
-                    program.addDeclaration(declaration);
-                }
+                if (declaration != null) program.addDeclaration(declaration);
             } catch (Exception e) {
                 System.err.println("Error de parsing: " + e.getMessage());
                 synchronize();
             }
         }
-        
         return program;
     }
 
-    
     private boolean isTypeToken(TokenType type) {
         return type == TokenType.INT || type == TokenType.FLOAT || 
                type == TokenType.STRING || type == TokenType.BOOLEAN ||
                type == TokenType.VOID;
     }
-    
 
     private ASTNode parseDeclaration() {
-        if (currentToken.getType() == TokenType.FUNCTION) {
-            return parseFunctionDeclaration();
-        } else if (currentToken.getType() == TokenType.VAR) {
-            return parseVariableDeclaration();
-        }
+        if (check(TokenType.FUNCTION)) return parseFunctionDeclaration();
+        if (check(TokenType.VAR)) return parseVariableDeclaration();
+        if (check(TokenType.SEMICOLON)) { nextToken(); return null; } // declaración vacía
         return parseStatement();
     }
 
     private FunctionNode parseFunctionDeclaration() {
         expect(TokenType.FUNCTION);
+        int line = currentToken.getLine();
         String functionName = expect(TokenType.IDENTIFIER).getLexeme();
         expect(TokenType.LEFT_PAREN);
-        
-        FunctionNode function = new FunctionNode(currentToken.getLine(), functionName, "void");
+
+        FunctionNode function = new FunctionNode(line, functionName, "void");
+
+        // Parámetros
+        if (!check(TokenType.RIGHT_PAREN)) {
+            do {
+                int paramLine = currentToken.getLine();
+                String paramName = expect(TokenType.IDENTIFIER).getLexeme();
+                expect(TokenType.COLON);
+                Token typeToken = expectTypeToken();
+                VariableDeclNode paramNode = new VariableDeclNode(
+                        paramLine, paramName, typeToken.getLexeme(), null
+                );
+                function.addParameter(paramNode);
+            } while (match(TokenType.COMMA));
+        }
+
         expect(TokenType.RIGHT_PAREN);
         expect(TokenType.LEFT_BRACE);
-        
-        BlockNode body = parseBlock();
-        function.setBody(body);
-        
+        function.setBody(parseBlock());
+
         return function;
+    }
+
+    private Token expectTypeToken() {
+        if (isTypeToken(currentToken.getType())) return nextToken();
+        throw new RuntimeException("Se esperaba tipo de dato, se encontró: " + currentToken.getType());
     }
 
     private VariableDeclNode parseVariableDeclaration() {
         expect(TokenType.VAR);
-        
-        // Obtener nombre de la variable
+        int line = currentToken.getLine();
         String varName = expect(TokenType.IDENTIFIER).getLexeme();
-        
-        // Esperar dos puntos
         expect(TokenType.COLON);
-        
-        // Obtener tipo (ahora es palabra reservada)
-        Token typeToken = currentToken;
-        if (isTypeToken(typeToken.getType())) {
-            nextToken();
-            String typeName = typeToken.getLexeme();
-            
-            ASTNode initialValue = null;
-            if (match(TokenType.ASSIGN)) {
-                initialValue = parseExpression();
-            }
-            
-            expect(TokenType.SEMICOLON);
-            return new VariableDeclNode(typeToken.getLine(), varName, typeName, initialValue);
-        } else {
-            throw new RuntimeException("Se esperaba tipo de dato, se encontró: " + typeToken.getType());
-        }
+        Token typeToken = expectTypeToken();
+
+        ASTNode initialValue = null;
+        if (match(TokenType.ASSIGN)) initialValue = parseExpression();
+
+        expect(TokenType.SEMICOLON);
+        return new VariableDeclNode(line, varName, typeToken.getLexeme(), initialValue);
     }
 
     private BlockNode parseBlock() {
         BlockNode block = new BlockNode(currentToken.getLine());
-        
+        expect(TokenType.LEFT_BRACE);
         while (!check(TokenType.RIGHT_BRACE) && !check(TokenType.EOF)) {
-            ASTNode stmt = parseStatement();
-            if (stmt != null) {
-                block.addStatement(stmt);
-            }
+            ASTNode stmt = parseDeclaration();
+            if (stmt != null) block.addStatement(stmt);
         }
-        
         expect(TokenType.RIGHT_BRACE);
         return block;
     }
@@ -112,133 +107,135 @@ public class Parser {
         if (check(TokenType.WHILE)) return parseWhileStatement();
         if (check(TokenType.RETURN)) return parseReturnStatement();
         if (check(TokenType.LEFT_BRACE)) return parseBlock();
-        if (check(TokenType.IDENTIFIER) && peekToken.getType() == TokenType.ASSIGN) {
-            return parseAssignment();
-        }
+        if (check(TokenType.IDENTIFIER) && peekToken.getType() == TokenType.ASSIGN) return parseAssignment();
+        if (check(TokenType.PRINT)) return parsePrintStatement();
         return parseExpressionStatement();
     }
 
     private ASTNode parseIfStatement() {
+        int line = currentToken.getLine();
         expect(TokenType.IF);
         expect(TokenType.LEFT_PAREN);
         ASTNode condition = parseExpression();
         expect(TokenType.RIGHT_PAREN);
-        
         BlockNode thenBlock = parseBlock();
-        IfNode ifNode = new IfNode(currentToken.getLine(), condition, thenBlock);
-        
-        if (match(TokenType.ELSE)) {
-            ifNode.setElseBlock(parseBlock());
-        }
-        
+        IfNode ifNode = new IfNode(line, condition, thenBlock);
+        if (match(TokenType.ELSE)) ifNode.setElseBlock(parseBlock());
         return ifNode;
     }
 
     private ASTNode parseWhileStatement() {
+        int line = currentToken.getLine();
         expect(TokenType.WHILE);
         expect(TokenType.LEFT_PAREN);
         ASTNode condition = parseExpression();
         expect(TokenType.RIGHT_PAREN);
-        
         BlockNode body = parseBlock();
-        return new WhileNode(currentToken.getLine(), condition, body);
+        return new WhileNode(line, condition, body);
     }
 
     private ASTNode parseReturnStatement() {
+        int line = currentToken.getLine();
         expect(TokenType.RETURN);
         ASTNode value = null;
-        if (!check(TokenType.SEMICOLON)) {
-            value = parseExpression();
-        }
+        if (!check(TokenType.SEMICOLON)) value = parseExpression();
         expect(TokenType.SEMICOLON);
-        return new ReturnNode(currentToken.getLine(), value);
+        return new ReturnNode(line, value);
     }
 
     private ASTNode parseAssignment() {
+        int line = currentToken.getLine();
         String varName = expect(TokenType.IDENTIFIER).getLexeme();
         expect(TokenType.ASSIGN);
         ASTNode value = parseExpression();
         expect(TokenType.SEMICOLON);
-        return new AssignmentNode(currentToken.getLine(), varName, value);
+        return new AssignmentNode(line, varName, value);
     }
 
     private ASTNode parseExpressionStatement() {
+        int line = currentToken.getLine();
         ASTNode expr = parseExpression();
         expect(TokenType.SEMICOLON);
-        return new ExpressionStatementNode(currentToken.getLine(), expr);
+        return new ExpressionStatementNode(line, expr);
+    }
+
+    private ASTNode parsePrintStatement() {
+        int line = currentToken.getLine();
+        expect(TokenType.PRINT);
+        expect(TokenType.LEFT_PAREN);
+        List<ASTNode> args = new ArrayList<>();
+        if (!check(TokenType.RIGHT_PAREN)) {
+            do {
+                args.add(parseExpression());
+            } while (match(TokenType.COMMA));
+        }
+        expect(TokenType.RIGHT_PAREN);
+        expect(TokenType.SEMICOLON);
+        CallNode printCall = new CallNode(line, "print");
+        args.forEach(printCall::addArgument);
+        return printCall;
     }
 
     private ASTNode parseExpression() {
-        try {
-            return parseBinaryExpression(0);
-        } catch (Exception e) {
-            // Recuperación de errores: sincronizar hasta el siguiente statement
-            synchronize();
-            throw new RuntimeException("Expresión inválida: " + e.getMessage());
-        }
-}
+        return parseBinaryExpression(0);
+    }
+
     private ASTNode parseBinaryExpression(int precedence) {
-        ASTNode left = parsePrimary();
-        
+        ASTNode left = parseUnaryExpression();
+
         while (true) {
             Token op = currentToken;
             int opPrecedence = getPrecedence(op.getType());
             if (opPrecedence <= precedence) break;
-            
+
             nextToken();
             ASTNode right = parseBinaryExpression(opPrecedence);
             left = new BinaryExpression(op.getLine(), left, op.getLexeme(), right);
         }
-        
+
         return left;
     }
 
+    private ASTNode parseUnaryExpression() {
+        if (check(TokenType.NOT) || check(TokenType.MINUS)) {
+            int line = currentToken.getLine();
+            Token op = nextToken();
+            ASTNode expr = parseUnaryExpression();
+            return new UnaryExpressionNode(line, op.getLexeme(), expr);
+        }
+        return parsePrimary();
+    }
+
     private ASTNode parsePrimary() {
-        System.out.println("Token actual: " + currentToken.getType() + " - " + currentToken.getLexeme());
-        if (check(TokenType.NUMBER)) {
+        int line = currentToken.getLine();
+        if (check(TokenType.NUMBER) || check(TokenType.STRING_LITERAL)) {
             Object value = currentToken.getLiteral();
-            int line = currentToken.getLine();
-            nextToken();
-            return new LiteralNode(line, value);
-            
-        }
-        System.out.println("Token actual: " + currentToken.getType() + " - " + currentToken.getLexeme());
-        if (check(TokenType.STRING_LITERAL)) {
-            Object value = currentToken.getLiteral();
-            int line = currentToken.getLine();
             nextToken();
             return new LiteralNode(line, value);
         }
-        System.out.println("Token actual: " + currentToken.getType() + " - " + currentToken.getLexeme());
         if (check(TokenType.IDENTIFIER)) {
             String name = currentToken.getLexeme();
-            int line = currentToken.getLine();
             nextToken();
-            System.out.println("Token actual: " + currentToken.getType() + " - " + currentToken.getLexeme());
-            if (check(TokenType.LEFT_PAREN)) {
-                return parseFunctionCall(name);
-            }
+            if (check(TokenType.LEFT_PAREN)) return parseFunctionCall(name);
             return new IdentifierNode(line, name);
         }
-        System.out.println("Token actual: " + currentToken.getType() + " - " + currentToken.getLexeme());
         if (match(TokenType.LEFT_PAREN)) {
             ASTNode expr = parseExpression();
             expect(TokenType.RIGHT_PAREN);
             return expr;
         }
-        throw new RuntimeException("Expresión inválida");
+        throw new RuntimeException("Expresión inválida en línea " + line);
     }
 
-    private ASTNode parseFunctionCall(String functionName) {
-        CallNode call = new CallNode(currentToken.getLine(), functionName);
+    private CallNode parseFunctionCall(String functionName) {
+        int line = currentToken.getLine();
         expect(TokenType.LEFT_PAREN);
-        
+        CallNode call = new CallNode(line, functionName);
         if (!check(TokenType.RIGHT_PAREN)) {
             do {
                 call.addArgument(parseExpression());
             } while (match(TokenType.COMMA));
         }
-        
         expect(TokenType.RIGHT_PAREN);
         return call;
     }
@@ -256,10 +253,8 @@ public class Parser {
     }
 
     private Token expect(TokenType type) {
-        if (currentToken.getType() == type) {
-            return nextToken();
-        }
-        throw new RuntimeException("Se esperaba " + type + ", se encontró " + currentToken.getType());
+        if (currentToken.getType() == type) return nextToken();
+        throw new RuntimeException("Se esperaba " + type + ", se encontró " + currentToken.getType() + " en línea " + currentToken.getLine());
     }
 
     private boolean check(TokenType type) {
@@ -267,10 +262,7 @@ public class Parser {
     }
 
     private boolean match(TokenType type) {
-        if (check(type)) {
-            nextToken();
-            return true;
-        }
+        if (check(type)) { nextToken(); return true; }
         return false;
     }
 
@@ -283,20 +275,12 @@ public class Parser {
 
     private void synchronize() {
         while (currentToken.getType() != TokenType.EOF) {
-            if (currentToken.getType() == TokenType.SEMICOLON) {
-                nextToken();
-                return;
-            }
-            
-            // Si encontramos el inicio de una nueva declaración, paramos
-            if (currentToken.getType() == TokenType.FUNCTION || 
+            if (currentToken.getType() == TokenType.SEMICOLON) { nextToken(); return; }
+            if (currentToken.getType() == TokenType.FUNCTION ||
                 currentToken.getType() == TokenType.VAR ||
                 currentToken.getType() == TokenType.IF ||
                 currentToken.getType() == TokenType.WHILE ||
-                currentToken.getType() == TokenType.RETURN) {
-                return;
-            }
-            
+                currentToken.getType() == TokenType.RETURN) return;
             nextToken();
         }
     }

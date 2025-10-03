@@ -14,4 +14,8 @@ public class LiteralNode extends ASTNode {
     public void accept(ASTVisitor visitor) {
         visitor.visit(this);
     }
+
+    public Object acceptExpression(ExpressionVisitor visitor) {
+        return visitor.visit(this);
+    }
 }

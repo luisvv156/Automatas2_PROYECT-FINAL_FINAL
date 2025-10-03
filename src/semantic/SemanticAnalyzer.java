@@ -2,124 +2,130 @@ package semantic;
 
 import ast.*;
 import util.ManejadorErrores;
-import java.util.HashMap;
-import java.util.Map;
 
+/**
+ * Analizador semántico que recorre el AST y valida:
+ * - Declaración de variables y funciones.
+ * - Uso correcto de identificadores.
+ * - Coincidencia de parámetros en llamadas a funciones.
+ */
 public class SemanticAnalyzer implements ASTVisitor {
+
     private ScopeManager scopeManager;
     private ManejadorErrores manejadorErrores;
-    private String currentFunction;
-    private Tipo currentReturnType;
-    private int recursionDepth;
-    private static final int MAX_RECURSION_DEPTH = 500;
-    private Map<String, Boolean> analyzedFunctions;
 
     public SemanticAnalyzer() {
         this.scopeManager = new ScopeManager();
         this.manejadorErrores = new ManejadorErrores();
-        this.currentFunction = "global";
-        this.currentReturnType = Tipo.VOID;
-        this.recursionDepth = 0;
-        this.analyzedFunctions = new HashMap<>();
+        registrarFuncionesPredefinidas();
     }
 
+    private void registrarFuncionesPredefinidas() {
+        // Registrar función print en el scope global
+        Symbol printSymbol = new Symbol("print", Tipo.VOID, null, true);
+        scopeManager.getGlobalScope().declareSymbol("print", printSymbol);
+    }
+
+    public ManejadorErrores getManejadorErrores() {
+        return manejadorErrores;
+    }
+
+    // Analizar un programa completo
     public void analyze(ProgramNode program) {
         try {
             // Primera pasada: declarar todas las funciones
             for (ASTNode declaration : program.getDeclarations()) {
                 if (declaration instanceof FunctionNode) {
                     FunctionNode func = (FunctionNode) declaration;
+                    
+                    // CORREGIDO: Verificar si la función ya existe
+                    if (scopeManager.resolve(func.getFunctionName()) != null) {
+                        manejadorErrores.agregarError(
+                            func.getLineNumber(),
+                            "Función '" + func.getFunctionName() + "' ya declarada",
+                            "Semántico"
+                        );
+                        continue;
+                    }
+                    
                     Symbol funcSymbol = new Symbol(
-                        func.getFunctionName(),
-                        Tipo.fromString(func.getReturnType()),
-                        null,
-                        true
+                            func.getFunctionName(),
+                            Tipo.fromString(func.getReturnType()),
+                            null,
+                            true
                     );
-                    scopeManager.declareSymbol(func.getFunctionName(), funcSymbol);
+                    funcSymbol.setFunctionNode(func); // guardar nodo completo
+                    scopeManager.getGlobalScope().declareSymbol(func.getFunctionName(), funcSymbol);
                 }
             }
-            
+
             // Segunda pasada: analizar cuerpos
             for (ASTNode declaration : program.getDeclarations()) {
                 declaration.accept(this);
             }
-            
+
         } catch (Exception e) {
-            manejadorErrores.agregarError(0, "Error durante análisis semántico: " + e.getMessage(), "Semántico");
+            manejadorErrores.agregarError(
+                0,
+                "Error durante análisis semántico: " + e.getMessage(),
+                "Semántico"
+            );
         }
     }
 
-    private void checkRecursionDepth() {
-        if (recursionDepth > MAX_RECURSION_DEPTH) {
-            throw new RuntimeException("Profundidad de recursión excedida (" + MAX_RECURSION_DEPTH + ")");
+    // ---------- Implementación de ASTVisitor ----------
+
+    @Override
+    public void visit(ProgramNode node) {
+        for (ASTNode decl : node.getDeclarations()) {
+            decl.accept(this);
         }
     }
 
     @Override
-    public void visit(ProgramNode node) {
+    public void visit(BlockNode node) {
+        // CORREGIDO: Entrar a un nuevo scope para el bloque
         scopeManager.enterScope();
-        for (ASTNode child : node.getDeclarations()) {
-            child.accept(this);
+        for (ASTNode stmt : node.getStatements()) {
+            stmt.accept(this);
         }
         scopeManager.exitScope();
     }
 
     @Override
     public void visit(FunctionNode node) {
-        String functionName = node.getFunctionName();
-        
-        // Evitar re-analizar funciones ya procesadas
-        if (analyzedFunctions.containsKey(functionName)) {
-            return;
-        }
-        analyzedFunctions.put(functionName, true);
-
-        recursionDepth++;
-        checkRecursionDepth();
-
-        String previousFunction = currentFunction;
-        Tipo previousReturnType = currentReturnType;
-        
-        currentFunction = functionName;
-        currentReturnType = Tipo.fromString(node.getReturnType());
-        
+        // CORREGIDO: Las funciones ya fueron declaradas en la primera pasada
+        // Ahora analizamos el cuerpo con un nuevo scope
         scopeManager.enterScope();
-        
-        // Analizar parámetros
-        for (ASTNode param : node.getParameters()) {
-            param.accept(this);
+
+        // Declarar parámetros en el scope de la función
+        for (VariableDeclNode param : node.getParameters()) {
+            Symbol paramSymbol = new Symbol(param.getName(), Tipo.fromString(param.getType()), null, false);
+            scopeManager.declareSymbol(param.getName(), paramSymbol);
         }
-        
+
         // Analizar cuerpo
         if (node.getBody() != null) {
             node.getBody().accept(this);
         }
-        
+
         scopeManager.exitScope();
-        
-        currentFunction = previousFunction;
-        currentReturnType = previousReturnType;
-        recursionDepth--;
     }
 
     @Override
     public void visit(VariableDeclNode node) {
-        String varName = node.getVariableName();
-        
-        if (scopeManager.containsSymbol(varName)) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "Variable '" + varName + "' ya declarada", "Semántico");
+        // CORREGIDO: Verificar si la variable ya existe en el scope actual
+        if (scopeManager.getCurrentScope().resolve(node.getName()) != null) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "Variable '" + node.getName() + "' ya declarada en este scope",
+                "Semántico"
+            );
             return;
         }
 
-        Symbol varSymbol = new Symbol(
-            varName,
-            Tipo.fromString(node.getType()),
-            null,
-            false
-        );
-        
-        scopeManager.declareSymbol(varName, varSymbol);
+        Symbol symbol = new Symbol(node.getName(), Tipo.fromString(node.getType()), null, false);
+        scopeManager.declareSymbol(node.getName(), symbol);
 
         if (node.getInitialValue() != null) {
             node.getInitialValue().accept(this);
@@ -128,43 +134,22 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(AssignmentNode node) {
-        String varName = node.getVariableName();
-        
-        // Verificar que la variable existe
-        Symbol symbol = scopeManager.resolve(varName);
+        // CORREGIDO: Usar scopeManager.resolve() que busca en todos los scopes
+        Symbol symbol = scopeManager.resolve(node.getVariableName());
         if (symbol == null) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "Variable '" + varName + "' no declarada", "Semántico");
-            return;
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "Variable no declarada: " + node.getVariableName(),
+                "Semántico"
+            );
+        } else if (symbol.isFunction()) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "'" + node.getVariableName() + "' es una función, no se puede asignar",
+                "Semántico"
+            );
         }
-
-        // Verificar que no sea una función
-        if (symbol.isFunction()) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "'" + varName + "' es una función, no una variable", "Semántico");
-            return;
-        }
-
-        // Verificar el valor asignado
         node.getValue().accept(this);
-    }
-
-    @Override
-    public void visit(ReturnNode node) {
-        // Verificar que estamos dentro de una función
-        if ("global".equals(currentFunction)) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "Return fuera de función", "Semántico");
-            return;
-        }
-
-        // Verificar tipo de retorno
-        if (node.getValue() != null) {
-            node.getValue().accept(this);
-        } else if (currentReturnType != Tipo.VOID) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "Función debe retornar un valor", "Semántico");
-        }
     }
 
     @Override
@@ -174,61 +159,67 @@ public class SemanticAnalyzer implements ASTVisitor {
     }
 
     @Override
-    public void visit(BlockNode node) {
-        scopeManager.enterScope();
-        for (ASTNode statement : node.getStatements()) {
-            statement.accept(this);
-        }
-        scopeManager.exitScope();
-    }
-
-    @Override
-    public void visit(CallNode node) {
-        String functionName = node.getFunctionName();
-            if (functionName.equals("print")) {
-            return;
-        }
-        
-        // Verificar que la función existe
-        Symbol symbol = scopeManager.resolve(functionName);
-        if (symbol == null) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "Función '" + functionName + "' no declarada", "Semántico");
-            return;
-        }
-
-        // Verificar que sea una función
-        if (!symbol.isFunction()) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "'" + functionName + "' no es una función", "Semántico");
-            return;
-        }
-
-        // Verificar argumentos
-        for (ASTNode arg : node.getArguments()) {
-            arg.accept(this);
-        }
-    }
-
-    @Override
-    public void visit(ExpressionStatementNode node) {
+    public void visit(UnaryExpressionNode node) {
         node.getExpression().accept(this);
     }
 
     @Override
-    public void visit(IdentifierNode node) {
-        String varName = node.getName();
+    public void visit(LiteralNode node) {
+        // Literales siempre son válidos
+    }
 
-        // Ignorar operadores y delimitadores
-        if (varName.equals("+") || varName.equals(";") || varName.equals("-") || varName.equals("*") || varName.equals("/") ) {
+    @Override
+    public void visit(IdentifierNode node) {
+        // CORREGIDO: Usar scopeManager.resolve() que busca en todos los scopes
+        Symbol symbol = scopeManager.resolve(node.getName());
+        if (symbol == null && !node.isBooleanLiteral()) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "Identificador no declarado: " + node.getName(),
+                "Semántico"
+            );
+        }
+    }
+
+    @Override
+    public void visit(CallNode node) {
+        // CORREGIDO: Usar scopeManager.resolve() que busca en todos los scopes
+        Symbol funcSymbol = scopeManager.resolve(node.getFunctionName());
+        if (funcSymbol == null) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "Función no declarada: " + node.getFunctionName(),
+                "Semántico"
+            );
             return;
         }
 
-        // Verificar que la variable existe
-        Symbol symbol = scopeManager.resolve(varName);
-        if (symbol == null) {
-            manejadorErrores.agregarError(node.getLineNumber(), 
-                "Variable '" + varName + "' no declarada", "Semántico");
+        if (!funcSymbol.isFunction()) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "'" + node.getFunctionName() + "' no es una función",
+                "Semántico"
+            );
+            return;
+        }
+
+        FunctionNode funcNode = funcSymbol.getFunctionNode();
+        if (funcNode != null) {
+            int expected = funcNode.getParameters().size();
+            int provided = node.getArguments().size();
+
+            if (expected != provided) {
+                manejadorErrores.agregarError(
+                    node.getLineNumber(),
+                    "Número de argumentos incorrecto en '" + node.getFunctionName() +
+                            "': esperado " + expected + ", recibido " + provided,
+                    "Semántico"
+                );
+            }
+        }
+
+        for (ASTNode arg : node.getArguments()) {
+            arg.accept(this);
         }
     }
 
@@ -236,19 +227,10 @@ public class SemanticAnalyzer implements ASTVisitor {
     public void visit(IfNode node) {
         node.getCondition().accept(this);
         node.getThenBlock().accept(this);
+
         if (node.getElseBlock() != null) {
             node.getElseBlock().accept(this);
         }
-    }
-
-    @Override
-    public void visit(LiteralNode node) {
-        // No requiere verificación semántica
-    }
-
-    @Override
-    public void visit(TypeNode node) {
-        // No requiere verificación semántica
     }
 
     @Override
@@ -258,13 +240,26 @@ public class SemanticAnalyzer implements ASTVisitor {
     }
 
     @Override
-    public void visit(PrintNode node) {
-        // Verificar que el valor a imprimir existe
-        node.getValue().accept(this);
+    public void visit(ReturnNode node) {
+        if (node.getValue() != null) {
+            node.getValue().accept(this);
+        }
     }
-    
 
-    public ManejadorErrores getManejadorErrores() {
-        return manejadorErrores;
+    @Override
+    public void visit(ExpressionStatementNode node) {
+        node.getExpression().accept(this);
+    }
+
+    @Override
+    public void visit(TypeNode node) {
+        // No necesita implementación
+    }
+
+    @Override
+    public void visit(PrintNode node) {
+        if (node.getValue() != null) {
+            node.getValue().accept(this);
+        }
     }
 }

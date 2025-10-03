@@ -1,3 +1,4 @@
+// BinaryExpression.java (esta está bien)
 package ast;
 
 public class BinaryExpression extends ASTNode {
@@ -16,12 +17,44 @@ public class BinaryExpression extends ASTNode {
     public String getOperator() { return operator; }
     public ASTNode getRight() { return right; }
 
+    // ... resto del código igual
+
+    public void setLeft(ASTNode left) { this.left = left; }
+    public void setRight(ASTNode right) { this.right = right; }
+    public void setOperator(String operator) { this.operator = operator; }
+
+    // --- Visitor para análisis general ---
     @Override
     public void accept(ASTVisitor visitor) {
         visitor.visit(this);
     }
-        @Override
-    public Object accept(ExpressionVisitor visitor) {
+
+    // --- Visitor para expresiones, método con nombre distinto ---
+    public Object acceptExpression(ExpressionVisitor visitor) {
         return visitor.visit(this);
+    }
+
+    /**
+     * Método auxiliar para verificar si el operador es lógico.
+     */
+    public boolean isLogicalOperator() {
+        return "&&".equals(operator) || "||".equals(operator);
+    }
+
+    /**
+     * Método auxiliar para verificar si el operador es comparativo.
+     */
+    public boolean isComparisonOperator() {
+        return "==".equals(operator) || "!=".equals(operator) ||
+               "<".equals(operator) || ">".equals(operator) ||
+               "<=".equals(operator) || ">=".equals(operator);
+    }
+
+    /**
+     * Método auxiliar para verificar si el operador es aritmético.
+     */
+    public boolean isArithmeticOperator() {
+        return "+".equals(operator) || "-".equals(operator) ||
+               "*".equals(operator) || "/".equals(operator);
     }
 }

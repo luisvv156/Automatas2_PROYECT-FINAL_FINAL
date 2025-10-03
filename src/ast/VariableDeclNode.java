@@ -1,18 +1,19 @@
 package ast;
 
 public class VariableDeclNode extends ASTNode {
-    private String variableName;
+    private String name;  // SOLO UN campo para el nombre
     private String type;
     private ASTNode initialValue;
 
-    public VariableDeclNode(int lineNumber, String variableName, String type, ASTNode initialValue) {
+    public VariableDeclNode(int lineNumber, String name, String type, ASTNode initialValue) {
         super(lineNumber);
-        this.variableName = variableName;
+        this.name = name;  // Inicializar el campo 'name'
         this.type = type;
         this.initialValue = initialValue;
     }
 
-    public String getVariableName() { return variableName; }
+    // CORREGIDO: Solo un getter para el nombre
+    public String getName() { return name; }
     public String getType() { return type; }
     public ASTNode getInitialValue() { return initialValue; }
 
