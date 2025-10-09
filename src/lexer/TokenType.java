@@ -16,6 +16,9 @@ public enum TokenType {
     LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE,
     COMMA, SEMICOLON, COLON,
     
+    // Arrays
+    LEFT_BRACKET, RIGHT_BRACKET,
+    
     // Fin de archivo
     EOF
 }

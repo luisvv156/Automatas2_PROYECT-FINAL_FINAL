@@ -19,6 +19,10 @@ public interface ASTVisitor {
     void visit(IfNode node);
     void visit(WhileNode node);
     void visit(ReturnNode node);
+    
+    //arrayssss
+    void visit(ArrayNode node);
+    void visit(ArrayAccessNode node);
 
     // Nodos de tipo o impresión
     void visit(TypeNode node);

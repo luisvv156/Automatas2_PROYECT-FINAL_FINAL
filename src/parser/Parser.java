@@ -78,17 +78,50 @@ public class Parser {
     }
 
     private VariableDeclNode parseVariableDeclaration() {
-        expect(TokenType.VAR);
-        int line = currentToken.getLine();
-        String varName = expect(TokenType.IDENTIFIER).getLexeme();
-        expect(TokenType.COLON);
-        Token typeToken = expectTypeToken();
+            expect(TokenType.VAR);
+            int line = currentToken.getLine();
+            String varName = expect(TokenType.IDENTIFIER).getLexeme();
+            expect(TokenType.COLON);
+            
+            // Verificar si es tipo array (ej: int[])
+            String typeName;
+            if (check(TokenType.INT) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+                nextToken(); // consume INT
+                expect(TokenType.LEFT_BRACKET);
+                expect(TokenType.RIGHT_BRACKET);
+                typeName = "int[]";
+            } else if (check(TokenType.FLOAT) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+                nextToken(); // consume FLOAT
+                expect(TokenType.LEFT_BRACKET);
+                expect(TokenType.RIGHT_BRACKET);
+                typeName = "float[]";
+            } else if (check(TokenType.STRING) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+                nextToken(); // consume STRING
+                expect(TokenType.LEFT_BRACKET);
+                expect(TokenType.RIGHT_BRACKET);
+                typeName = "string[]";
+            } else if (check(TokenType.BOOLEAN) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+                nextToken(); // consume BOOLEAN
+                expect(TokenType.LEFT_BRACKET);
+                expect(TokenType.RIGHT_BRACKET);
+                typeName = "boolean[]";
+            } else {
+                // Tipo normal (no array)
+                Token typeToken = expectTypeToken();
+                typeName = typeToken.getLexeme();
+            }
 
-        ASTNode initialValue = null;
-        if (match(TokenType.ASSIGN)) initialValue = parseExpression();
+            ASTNode initialValue = null;
+            if (match(TokenType.ASSIGN)) {
+                if (typeName.endsWith("[]")) {
+                    initialValue = parseArrayLiteral();
+                } else {
+                    initialValue = parseExpression();
+                }
+            }
 
-        expect(TokenType.SEMICOLON);
-        return new VariableDeclNode(line, varName, typeToken.getLexeme(), initialValue);
+            expect(TokenType.SEMICOLON);
+            return new VariableDeclNode(line, varName, typeName, initialValue);
     }
 
     private BlockNode parseBlock() {
@@ -217,6 +250,9 @@ public class Parser {
         if (check(TokenType.IDENTIFIER)) {
             String name = currentToken.getLexeme();
             nextToken();
+            if (check(TokenType.LEFT_BRACKET)) {
+                return parseArrayAccess(name);
+            }
             if (check(TokenType.LEFT_PAREN)) return parseFunctionCall(name);
             return new IdentifierNode(line, name);
         }
@@ -225,8 +261,48 @@ public class Parser {
             expect(TokenType.RIGHT_PAREN);
             return expr;
         }
+        if (check(TokenType.LEFT_BRACKET)) {
+            return parseArrayLiteral();
+        }
+        
         throw new RuntimeException("Expresión inválida en línea " + line);
     }
+    private ArrayAccessNode parseArrayAccess(String arrayName) {
+        int line = currentToken.getLine();
+        expect(TokenType.LEFT_BRACKET);
+        ASTNode index = parseExpression();
+        expect(TokenType.RIGHT_BRACKET);
+        return new ArrayAccessNode(line, arrayName, index);
+    }
+
+    // Nuevo método para parsear literales de array
+    private ArrayNode parseArrayLiteral() {
+        int line = currentToken.getLine();
+        expect(TokenType.LEFT_BRACKET);
+        
+        List<ASTNode> elements = new ArrayList<>();
+        String elementType = null;
+        
+        if (!check(TokenType.RIGHT_BRACKET)) {
+            do {
+                ASTNode element = parseExpression();
+                elements.add(element);
+                
+                // Inferir tipo del primer elemento
+                if (elementType == null && element instanceof LiteralNode) {
+                    Object value = ((LiteralNode) element).getValue();
+                    if (value instanceof Integer) elementType = "int";
+                    else if (value instanceof Double) elementType = "float";
+                    else if (value instanceof String) elementType = "string";
+                    else if (value instanceof Boolean) elementType = "boolean";
+                }
+            } while (match(TokenType.COMMA));
+        }
+        
+        expect(TokenType.RIGHT_BRACKET);
+        return new ArrayNode(line, elements, elementType != null ? elementType : "unknown");
+    }
+
 
     private CallNode parseFunctionCall(String functionName) {
         int line = currentToken.getLine();

@@ -1,9 +1,10 @@
 package interpreter;
-
 import ast.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Stack;
+import java.util.List;
+import java.util.ArrayList;
 
 public class Interpreter implements Evaluator {
     @SuppressWarnings("unused") // Suprimir warning de variable no usada
@@ -55,7 +56,12 @@ public class Interpreter implements Evaluator {
         if (node instanceof VariableDeclNode) return evaluate((VariableDeclNode) node);
         if (node instanceof WhileNode) return evaluate((WhileNode) node);
         if (node instanceof UnaryExpressionNode) return evaluate((UnaryExpressionNode) node); // CORREGIDO: Agregado
-        return null;
+        if (node instanceof ArrayNode) {
+            return evaluate((ArrayNode) node);
+        }
+        if (node instanceof ArrayAccessNode) return evaluate((ArrayAccessNode) node);
+            return null;
+        
     }
 
     private void checkExecutionDepth() {
@@ -78,7 +84,50 @@ public class Interpreter implements Evaluator {
     @Override
     public Object evaluate(AssignmentNode node) {
         Object value = evaluate(node.getValue());
+        
+        // Buscar en todos los scopes desde el más interno
+        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+            Map<String, Object> scope = scopeStack.get(i);
+            if (scope.containsKey(node.getVariableName())) {
+                scope.put(node.getVariableName(), value);
+                return value;
+            }
+        }
+        
+        // Si no se encontró, asignar en el scope actual
         scopeStack.peek().put(node.getVariableName(), value);
+        return value;
+    }
+    private Object evaluateArrayAssignment(AssignmentNode node) {
+        // Parsear nombre del array e índice
+        String[] parts = node.getVariableName().split("\\[");
+        String arrayName = parts[0];
+        String indexStr = parts[1].substring(0, parts[1].length() - 1); // quitar ] final
+        
+        // Evaluar array e índice
+        Object array = evaluate(new IdentifierNode(node.getLineNumber(), arrayName));
+        if (!(array instanceof List)) {
+            throw new RuntimeException(arrayName + " no es un array");
+        }
+        
+        @SuppressWarnings("unchecked")
+        List<Object> arrayList = (List<Object>) array;
+        
+        // Evaluar índice (necesitarías parsear la expresión del índice)
+        // Esto es una simplificación - en un caso real necesitarías más lógica
+        Object indexObj = evaluate(new LiteralNode(node.getLineNumber(), Integer.parseInt(indexStr)));
+        if (!(indexObj instanceof Integer)) {
+            throw new RuntimeException("Índice de array debe ser entero");
+        }
+        
+        int index = (Integer) indexObj;
+        if (index < 0 || index >= arrayList.size()) {
+            throw new RuntimeException("Índice fuera de rango: " + index);
+        }
+        
+        // Evaluar y asignar valor
+        Object value = evaluate(node.getValue());
+        arrayList.set(index, value);
         return value;
     }
 
@@ -93,9 +142,8 @@ public class Interpreter implements Evaluator {
                 if (left instanceof String || right instanceof String) {
                     return left.toString() + right.toString();
                 } else if (left instanceof Integer && right instanceof Integer) {
-                    return (Integer) left + (Integer) right; // Preservar enteros
+                    return (Integer) left + (Integer) right;
                 } else if (left instanceof Number && right instanceof Number) {
-                    // Si alguno es double, convertir ambos a double
                     double leftNum = ((Number) left).doubleValue();
                     double rightNum = ((Number) right).doubleValue();
                     return leftNum + rightNum;
@@ -269,7 +317,7 @@ public class Interpreter implements Evaluator {
     public Object evaluate(IdentifierNode node) {
         String name = node.getName();
         
-        // CORREGIDO: Manejar booleanos literales
+        // Manejar booleanos literales
         if (node.isBooleanLiteral()) {
             return "true".equals(name);
         }
@@ -281,6 +329,7 @@ public class Interpreter implements Evaluator {
                 return scope.get(name);
             }
         }
+        
         throw new RuntimeException("Variable no definida: " + name);
     }
 
@@ -348,7 +397,12 @@ public class Interpreter implements Evaluator {
         if (node.getInitialValue() != null) {
             value = evaluate(node.getInitialValue());
         }
-        // CORREGIDO: Cambiar getVariableName() por getName()
+        
+        // Para arrays, crear una lista si no hay valor inicial
+        if (node.getType().endsWith("[]") && value == null) {
+            value = new ArrayList<Object>();
+        }
+        
         scopeStack.peek().put(node.getName(), value);
         return value;
     }
@@ -356,19 +410,52 @@ public class Interpreter implements Evaluator {
     @Override
     public Object evaluate(WhileNode node) {
         Object result = null;
-        resetExecutionDepth(); // Resetear contador al inicio del bucle
+        resetExecutionDepth();
+        
         while (true) {
             Object condition = evaluate(node.getCondition());
             if (!isTruthy(condition)) {
                 break;
             }
             result = evaluate(node.getBody());
-            
-            // Control de profundidad para bucles infinitos
             checkExecutionDepth();
         }
         return result;
     }
+
+    @Override
+    public Object evaluate(ArrayNode node) {
+        List<Object> arrayValues = new ArrayList<>();
+        for (ASTNode element : node.getElements()) {
+            arrayValues.add(evaluate(element));
+        }
+        return arrayValues;
+    }
+    @Override
+    public Object evaluate(ArrayAccessNode node) {
+        // Obtener el array
+        Object array = evaluate(new IdentifierNode(node.getLineNumber(), node.getArrayName()));
+        if (!(array instanceof List)) {
+            throw new RuntimeException(node.getArrayName() + " no es un array");
+        }
+        
+        @SuppressWarnings("unchecked")
+        List<Object> arrayList = (List<Object>) array;
+        
+        // Obtener y verificar el índice
+        Object indexObj = evaluate(node.getIndex());
+        if (!(indexObj instanceof Integer)) {
+            throw new RuntimeException("Índice de array debe ser entero");
+        }
+        
+        int index = (Integer) indexObj;
+        if (index < 0 || index >= arrayList.size()) {
+            throw new RuntimeException("Índice fuera de rango: " + index + ", tamaño del array: " + arrayList.size());
+        }
+        
+        return arrayList.get(index);
+    }
+
 
     // CORREGIDO: Hacer pública la clase ReturnException para que sea accesible
     public static class ReturnException extends RuntimeException {

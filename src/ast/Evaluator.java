@@ -1,6 +1,6 @@
 package ast;
-
 public interface Evaluator {
+    // Métodos existentes
     Object evaluate(AssignmentNode node);
     Object evaluate(BinaryExpression node);
     Object evaluate(BlockNode node);
@@ -16,4 +16,9 @@ public interface Evaluator {
     Object evaluate(TypeNode node);
     Object evaluate(VariableDeclNode node);
     Object evaluate(WhileNode node);
+    Object evaluate(UnaryExpressionNode node);
+    
+    // NUEVOS: Métodos para arrays
+    Object evaluate(ArrayNode node);
+    Object evaluate(ArrayAccessNode node);
 }

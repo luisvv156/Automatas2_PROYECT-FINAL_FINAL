@@ -59,6 +59,9 @@ public class Lexer {
             case ';': return makeToken(TokenType.SEMICOLON, null);
             case ':': return makeToken(TokenType.COLON, null);
 
+            case '[': return makeToken(TokenType.LEFT_BRACKET, null);
+            case ']': return makeToken(TokenType.RIGHT_BRACKET, null);
+
             case '+': return makeToken(TokenType.PLUS, null);
             case '-': return makeToken(TokenType.MINUS, null);
             case '*': return makeToken(TokenType.MULTIPLY, null);

@@ -138,6 +138,17 @@ public class ExpressionEvaluator implements ASTVisitor {
             result = null;
         }
     }
+        @Override
+    public void visit(ArrayNode node) {
+        // Para evaluación de expresiones, no necesitas implementar esto
+        // a menos que estés haciendo evaluación estática
+    }
+
+    @Override
+    public void visit(ArrayAccessNode node) {
+        // Para evaluación de expresiones, no necesitas implementar esto
+        // a menos que estés haciendo evaluación estática
+    }
 
     // Implementaciones vacías para otros nodos (sin cambios)
     @Override public void visit(AssignmentNode node) {}

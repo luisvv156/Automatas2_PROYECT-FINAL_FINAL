@@ -284,4 +284,45 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         node.getExpression().accept(this);
         exitAnalysis();
     }
+        @Override
+    public void visit(ArrayNode node) {
+        enterAnalysis();
+        
+        // Analizar cada elemento del array
+        for (ASTNode element : node.getElements()) {
+            element.accept(this);
+        }
+        
+        exitAnalysis();
+    }
+
+    @Override
+    public void visit(ArrayAccessNode node) {
+        enterAnalysis();
+        
+        // Verificar que el array exista
+        String arrayName = node.getArrayName();
+        Symbol symbol = scopeManager.resolve(arrayName);
+        
+        if (symbol == null) {
+            errors.agregarError(node.getLineNumber(), 
+                "Array no declarado: " + arrayName, "Semántico");
+            exitAnalysis();
+            return;
+        }
+        
+        // Verificar que sea un array
+        String type = symbol.getType().toString();
+        if (!type.endsWith("[]")) {
+            errors.agregarError(node.getLineNumber(), 
+                "'" + arrayName + "' no es un array", "Semántico");
+            exitAnalysis();
+            return;
+        }
+        
+        // Verificar que el índice sea numérico
+        node.getIndex().accept(this);
+        
+        exitAnalysis();
+    }
 }
