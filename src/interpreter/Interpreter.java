@@ -87,77 +87,102 @@ public class Interpreter implements Evaluator {
         Object left = evaluate(node.getLeft());
         Object right = evaluate(node.getRight());
 
-        // CORREGIDO: Manejar operaciones con strings y booleanos
         switch (node.getOperator()) {
             case "+":
                 // Concatenación de strings o suma numérica
                 if (left instanceof String || right instanceof String) {
                     return left.toString() + right.toString();
+                } else if (left instanceof Integer && right instanceof Integer) {
+                    return (Integer) left + (Integer) right; // Preservar enteros
                 } else if (left instanceof Number && right instanceof Number) {
-                    return ((Number) left).doubleValue() + ((Number) right).doubleValue();
+                    // Si alguno es double, convertir ambos a double
+                    double leftNum = ((Number) left).doubleValue();
+                    double rightNum = ((Number) right).doubleValue();
+                    return leftNum + rightNum;
                 }
                 break;
                 
-            case "-": case "*": case "/":
-                // Operaciones puramente numéricas
-                if (!(left instanceof Number) || !(right instanceof Number)) {
-                    throw new RuntimeException("Operación numérica inválida con tipos no numéricos");
-                }
-                double leftNum = ((Number) left).doubleValue();
-                double rightNum = ((Number) right).doubleValue();
-                
-                switch (node.getOperator()) {
-                    case "-": return leftNum - rightNum;
-                    case "*": return leftNum * rightNum;
-                    case "/": 
-                        if (rightNum == 0) throw new RuntimeException("División por cero");
-                        return leftNum / rightNum;
+            case "-": 
+                if (left instanceof Integer && right instanceof Integer) {
+                    return (Integer) left - (Integer) right; // Preservar enteros
+                } else if (left instanceof Number && right instanceof Number) {
+                    double leftNum = ((Number) left).doubleValue();
+                    double rightNum = ((Number) right).doubleValue();
+                    return leftNum - rightNum;
                 }
                 break;
                 
-            case "<": case ">": case "<=": case ">=":
-                // Comparaciones numéricas
-                if (!(left instanceof Number) || !(right instanceof Number)) {
-                    throw new RuntimeException("Comparación numérica inválida con tipos no numéricos");
-                }
-                double leftComp = ((Number) left).doubleValue();
-                double rightComp = ((Number) right).doubleValue();
-                
-                switch (node.getOperator()) {
-                    case "<": return leftComp < rightComp;
-                    case ">": return leftComp > rightComp;
-                    case "<=": return leftComp <= rightComp;
-                    case ">=": return leftComp >= rightComp;
+            case "*":
+                if (left instanceof Integer && right instanceof Integer) {
+                    return (Integer) left * (Integer) right; // Preservar enteros
+                } else if (left instanceof Number && right instanceof Number) {
+                    double leftNum = ((Number) left).doubleValue();
+                    double rightNum = ((Number) right).doubleValue();
+                    return leftNum * rightNum;
                 }
                 break;
                 
+            case "/":
+                if (left instanceof Integer && right instanceof Integer) {
+                    // División entera
+                    int rightInt = (Integer) right;
+                    if (rightInt == 0) throw new RuntimeException("División por cero");
+                    return (Integer) left / rightInt;
+                } else if (left instanceof Number && right instanceof Number) {
+                    double rightNum = ((Number) right).doubleValue();
+                    if (rightNum == 0) throw new RuntimeException("División por cero");
+                    return ((Number) left).doubleValue() / rightNum;
+                }
+                break;
+                
+            // ... (operadores de comparación y lógicos se mantienen igual)
+            case "<": 
+                if (left instanceof Number && right instanceof Number) {
+                    return ((Number) left).doubleValue() < ((Number) right).doubleValue();
+                }
+                break;
+            case ">": 
+                if (left instanceof Number && right instanceof Number) {
+                    return ((Number) left).doubleValue() > ((Number) right).doubleValue();
+                }
+                break;
+            case "<=": 
+                if (left instanceof Number && right instanceof Number) {
+                    return ((Number) left).doubleValue() <= ((Number) right).doubleValue();
+                }
+                break;
+            case ">=": 
+                if (left instanceof Number && right instanceof Number) {
+                    return ((Number) left).doubleValue() >= ((Number) right).doubleValue();
+                }
+                break;
             case "==": case "!=":
-                // Comparaciones de igualdad (funcionan con cualquier tipo)
                 boolean equal = left.equals(right);
                 return node.getOperator().equals("==") ? equal : !equal;
                 
             case "&&": case "||":
-                // Operaciones lógicas
-                if (!(left instanceof Boolean) || !(right instanceof Boolean)) {
-                    throw new RuntimeException("Operación lógica inválida con tipos no booleanos");
+                if (left instanceof Boolean && right instanceof Boolean) {
+                    boolean leftBool = (Boolean) left;
+                    boolean rightBool = (Boolean) right;
+                    return node.getOperator().equals("&&") ? 
+                        leftBool && rightBool : leftBool || rightBool;
                 }
-                boolean leftBool = (Boolean) left;
-                boolean rightBool = (Boolean) right;
-                
-                return node.getOperator().equals("&&") ? 
-                    leftBool && rightBool : leftBool || rightBool;
+                break;
         }
         
-        throw new RuntimeException("Operador no soportado: " + node.getOperator());
+        throw new RuntimeException("Operación inválida: " + 
+            left.getClass().getSimpleName() + " " + node.getOperator() + " " + 
+            right.getClass().getSimpleName());
     }
 
-    // CORREGIDO: Agregar evaluación para UnaryExpressionNode
     public Object evaluate(UnaryExpressionNode node) {
         Object exprValue = evaluate(node.getExpression());
         
         switch (node.getOperator()) {
             case "-":
-                if (exprValue instanceof Number) {
+                if (exprValue instanceof Integer) {
+                    return -(Integer) exprValue; // Preservar entero
+                } else if (exprValue instanceof Number) {
                     return -((Number) exprValue).doubleValue();
                 } else {
                     throw new RuntimeException("Operador '-' no aplicable a tipo: " + 
@@ -174,7 +199,6 @@ public class Interpreter implements Evaluator {
                 throw new RuntimeException("Operador unario no soportado: " + node.getOperator());
         }
     }
-
     @Override
     public Object evaluate(BlockNode node) {
         scopeStack.push(new HashMap<>());
@@ -279,7 +303,22 @@ public class Interpreter implements Evaluator {
     @Override
     public Object evaluate(PrintNode node) {
         Object value = evaluate(node.getValue());
-        System.out.println(value);
+        
+        // Formatear la salida para evitar .0 en enteros
+        if (value instanceof Integer) {
+            System.out.println(value);
+        } else if (value instanceof Double) {
+            double doubleValue = (Double) value;
+            // Si es un número entero representado como double, imprimir sin .0
+            if (doubleValue == Math.floor(doubleValue) && !Double.isInfinite(doubleValue)) {
+                System.out.println((int) doubleValue);
+            } else {
+                System.out.println(doubleValue);
+            }
+        } else {
+            System.out.println(value);
+        }
+        
         return value;
     }
 

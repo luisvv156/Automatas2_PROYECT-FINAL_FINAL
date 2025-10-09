@@ -2,26 +2,23 @@ package semantic;
 
 import ast.*;
 import util.ManejadorErrores;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Analizador semántico que recorre el AST y valida:
- * - Declaración de variables y funciones.
- * - Uso correcto de identificadores.
- * - Coincidencia de parámetros en llamadas a funciones.
- */
 public class SemanticAnalyzer implements ASTVisitor {
 
     private ScopeManager scopeManager;
     private ManejadorErrores manejadorErrores;
+    private Map<ASTNode, Tipo> tiposExpresiones; // Para almacenar tipos inferidos
 
     public SemanticAnalyzer() {
         this.scopeManager = new ScopeManager();
         this.manejadorErrores = new ManejadorErrores();
+        this.tiposExpresiones = new HashMap<>();
         registrarFuncionesPredefinidas();
     }
 
     private void registrarFuncionesPredefinidas() {
-        // Registrar función print en el scope global
         Symbol printSymbol = new Symbol("print", Tipo.VOID, null, true);
         scopeManager.getGlobalScope().declareSymbol("print", printSymbol);
     }
@@ -30,15 +27,13 @@ public class SemanticAnalyzer implements ASTVisitor {
         return manejadorErrores;
     }
 
-    // Analizar un programa completo
     public void analyze(ProgramNode program) {
         try {
-            // Primera pasada: declarar todas las funciones
+            // Primera pasada: declarar funciones
             for (ASTNode declaration : program.getDeclarations()) {
                 if (declaration instanceof FunctionNode) {
                     FunctionNode func = (FunctionNode) declaration;
                     
-                    // CORREGIDO: Verificar si la función ya existe
                     if (scopeManager.resolve(func.getFunctionName()) != null) {
                         manejadorErrores.agregarError(
                             func.getLineNumber(),
@@ -49,12 +44,12 @@ public class SemanticAnalyzer implements ASTVisitor {
                     }
                     
                     Symbol funcSymbol = new Symbol(
-                            func.getFunctionName(),
-                            Tipo.fromString(func.getReturnType()),
-                            null,
-                            true
+                        func.getFunctionName(),
+                        Tipo.fromString(func.getReturnType()),
+                        null,
+                        true
                     );
-                    funcSymbol.setFunctionNode(func); // guardar nodo completo
+                    funcSymbol.setFunctionNode(func);
                     scopeManager.getGlobalScope().declareSymbol(func.getFunctionName(), funcSymbol);
                 }
             }
@@ -66,14 +61,99 @@ public class SemanticAnalyzer implements ASTVisitor {
 
         } catch (Exception e) {
             manejadorErrores.agregarError(
-                0,
-                "Error durante análisis semántico: " + e.getMessage(),
-                "Semántico"
+                0, "Error durante análisis semántico: " + e.getMessage(), "Semántico"
             );
         }
     }
 
-    // ---------- Implementación de ASTVisitor ----------
+    // ========== MÉTODOS DE INFERENCIA DE TIPOS ==========
+
+    private Tipo getTipoExpresion(ASTNode node) {
+        return tiposExpresiones.getOrDefault(node, Tipo.UNKNOWN);
+    }
+
+    private void setTipoExpresion(ASTNode node, Tipo tipo) {
+        tiposExpresiones.put(node, tipo);
+    }
+
+    private Tipo inferirTipoLiteral(LiteralNode node) {
+        Object value = node.getValue();
+        
+        // Si el valor es null, intentar inferir del contexto (para compatibilidad)
+        if (value == null) {
+            return Tipo.UNKNOWN;
+        }
+        
+        // Para literales numéricos, usar el tipo basado en la clase
+        if (value instanceof Integer) {
+            return Tipo.INT;
+        } else if (value instanceof Double || value instanceof Float) {
+            return Tipo.FLOAT;
+        } else if (value instanceof String) {
+            return Tipo.STRING;
+        } else if (value instanceof Boolean) {
+            return Tipo.BOOLEAN;
+        }
+        
+        return Tipo.UNKNOWN;
+    }
+
+    private Tipo inferirTipoIdentificador(IdentifierNode node) {
+        if (node.isBooleanLiteral()) {
+            return Tipo.BOOLEAN;
+        }
+        
+        Symbol symbol = scopeManager.resolve(node.getName());
+        return symbol != null ? symbol.getType() : Tipo.UNKNOWN;
+    }
+
+    private Tipo inferirTipoBinario(BinaryExpression node) {
+        Tipo leftType = getTipoExpresion(node.getLeft());
+        Tipo rightType = getTipoExpresion(node.getRight());
+        String operator = node.getOperator();
+
+        // Operadores aritméticos
+        if (operator.equals("+") || operator.equals("-") || 
+            operator.equals("*") || operator.equals("/")) {
+            
+            if (!Tipo.esNumerico(leftType) || !Tipo.esNumerico(rightType)) {
+                return Tipo.UNKNOWN;
+            }
+            
+            // Si alguno es float, el resultado es float
+            return (leftType == Tipo.FLOAT || rightType == Tipo.FLOAT) ? Tipo.FLOAT : Tipo.INT;
+        }
+
+        // Operadores de comparación
+        if (operator.equals("<") || operator.equals(">") || 
+            operator.equals("<=") || operator.equals(">=")) {
+            
+            if (Tipo.esNumerico(leftType) && Tipo.esNumerico(rightType)) {
+                return Tipo.BOOLEAN;
+            }
+            return Tipo.UNKNOWN;
+        }
+
+        // Operadores de igualdad
+        if (operator.equals("==") || operator.equals("!=")) {
+            if (Tipo.esCompatible(leftType, rightType)) {
+                return Tipo.BOOLEAN;
+            }
+            return Tipo.UNKNOWN;
+        }
+
+        // Operadores lógicos
+        if (operator.equals("&&") || operator.equals("||")) {
+            if (leftType == Tipo.BOOLEAN && rightType == Tipo.BOOLEAN) {
+                return Tipo.BOOLEAN;
+            }
+            return Tipo.UNKNOWN;
+        }
+
+        return Tipo.UNKNOWN;
+    }
+
+    // ========== IMPLEMENTACIÓN DE ASTVisitor ==========
 
     @Override
     public void visit(ProgramNode node) {
@@ -84,7 +164,6 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(BlockNode node) {
-        // CORREGIDO: Entrar a un nuevo scope para el bloque
         scopeManager.enterScope();
         for (ASTNode stmt : node.getStatements()) {
             stmt.accept(this);
@@ -94,13 +173,16 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(FunctionNode node) {
-        // CORREGIDO: Las funciones ya fueron declaradas en la primera pasada
-        // Ahora analizamos el cuerpo con un nuevo scope
         scopeManager.enterScope();
 
-        // Declarar parámetros en el scope de la función
+        // Declarar parámetros
         for (VariableDeclNode param : node.getParameters()) {
-            Symbol paramSymbol = new Symbol(param.getName(), Tipo.fromString(param.getType()), null, false);
+            Symbol paramSymbol = new Symbol(
+                param.getName(), 
+                Tipo.fromString(param.getType()), 
+                null, 
+                false
+            );
             scopeManager.declareSymbol(param.getName(), paramSymbol);
         }
 
@@ -114,7 +196,13 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(VariableDeclNode node) {
-        // CORREGIDO: Verificar si la variable ya existe en el scope actual
+        if (node.getName() == null) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(), "Nombre de variable no puede ser null", "Semántico"
+            );
+            return;
+        }
+
         if (scopeManager.getCurrentScope().resolve(node.getName()) != null) {
             manejadorErrores.agregarError(
                 node.getLineNumber(),
@@ -124,17 +212,27 @@ public class SemanticAnalyzer implements ASTVisitor {
             return;
         }
 
-        Symbol symbol = new Symbol(node.getName(), Tipo.fromString(node.getType()), null, false);
-        scopeManager.declareSymbol(node.getName(), symbol);
+        Tipo tipoVariable = Tipo.fromString(node.getType());
+        Symbol varSymbol = new Symbol(node.getName(), tipoVariable, null, false);
+        scopeManager.declareSymbol(node.getName(), varSymbol);
 
+        // Verificar tipo del valor inicial
         if (node.getInitialValue() != null) {
             node.getInitialValue().accept(this);
+            Tipo tipoValor = getTipoExpresion(node.getInitialValue());
+            
+            if (!Tipo.esCompatibleParaAsignacion(tipoVariable, tipoValor)) {
+                manejadorErrores.agregarError(
+                    node.getLineNumber(),
+                    "No se puede asignar valor de tipo " + tipoValor + " a variable de tipo " + tipoVariable,
+                    "Semántico"
+                );
+            }
         }
     }
 
     @Override
     public void visit(AssignmentNode node) {
-        // CORREGIDO: Usar scopeManager.resolve() que busca en todos los scopes
         Symbol symbol = scopeManager.resolve(node.getVariableName());
         if (symbol == null) {
             manejadorErrores.agregarError(
@@ -142,37 +240,95 @@ public class SemanticAnalyzer implements ASTVisitor {
                 "Variable no declarada: " + node.getVariableName(),
                 "Semántico"
             );
-        } else if (symbol.isFunction()) {
+            return;
+        }
+
+        if (symbol.isFunction()) {
             manejadorErrores.agregarError(
                 node.getLineNumber(),
                 "'" + node.getVariableName() + "' es una función, no se puede asignar",
                 "Semántico"
             );
+            return;
         }
+
+        // Analizar y verificar tipo del valor
         node.getValue().accept(this);
+        Tipo tipoValor = getTipoExpresion(node.getValue());
+        Tipo tipoVariable = symbol.getType();
+
+        if (!Tipo.esCompatibleParaAsignacion(tipoVariable, tipoValor)) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "No se puede asignar tipo " + tipoValor + " a variable de tipo " + tipoVariable,
+                "Semántico"
+            );
+        }
     }
 
     @Override
     public void visit(BinaryExpression node) {
+        // Primero analizar subexpresiones
         node.getLeft().accept(this);
         node.getRight().accept(this);
+
+        Tipo leftType = getTipoExpresion(node.getLeft());
+        Tipo rightType = getTipoExpresion(node.getRight());
+        Tipo resultType = inferirTipoBinario(node);
+
+        // Verificar compatibilidad
+        if (resultType == Tipo.UNKNOWN) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "Operación inválida: " + leftType + " " + node.getOperator() + " " + rightType,
+                "Semántico"
+            );
+        }
+
+        setTipoExpresion(node, resultType);
     }
 
     @Override
     public void visit(UnaryExpressionNode node) {
         node.getExpression().accept(this);
+        Tipo exprType = getTipoExpresion(node.getExpression());
+        
+        // Para operador '-', la expresión debe ser numérica
+        if (node.getOperator().equals("-")) {
+            if (!Tipo.esNumerico(exprType)) {
+                manejadorErrores.agregarError(
+                    node.getLineNumber(),
+                    "Operador '-' no aplicable a tipo " + exprType,
+                    "Semántico"
+                );
+            }
+            setTipoExpresion(node, exprType);
+        }
+        // Para operador '!', la expresión debe ser booleana
+        else if (node.getOperator().equals("!")) {
+            if (exprType != Tipo.BOOLEAN) {
+                manejadorErrores.agregarError(
+                    node.getLineNumber(),
+                    "Operador '!' no aplicable a tipo " + exprType,
+                    "Semántico"
+                );
+            }
+            setTipoExpresion(node, Tipo.BOOLEAN);
+        }
     }
 
     @Override
     public void visit(LiteralNode node) {
-        // Literales siempre son válidos
+        Tipo tipo = inferirTipoLiteral(node);
+        setTipoExpresion(node, tipo);
     }
 
     @Override
     public void visit(IdentifierNode node) {
-        // CORREGIDO: Usar scopeManager.resolve() que busca en todos los scopes
-        Symbol symbol = scopeManager.resolve(node.getName());
-        if (symbol == null && !node.isBooleanLiteral()) {
+        Tipo tipo = inferirTipoIdentificador(node);
+        setTipoExpresion(node, tipo);
+
+        if (tipo == Tipo.UNKNOWN && !node.isBooleanLiteral()) {
             manejadorErrores.agregarError(
                 node.getLineNumber(),
                 "Identificador no declarado: " + node.getName(),
@@ -183,7 +339,6 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(CallNode node) {
-        // CORREGIDO: Usar scopeManager.resolve() que busca en todos los scopes
         Symbol funcSymbol = scopeManager.resolve(node.getFunctionName());
         if (funcSymbol == null) {
             manejadorErrores.agregarError(
@@ -203,31 +358,28 @@ public class SemanticAnalyzer implements ASTVisitor {
             return;
         }
 
-        FunctionNode funcNode = funcSymbol.getFunctionNode();
-        if (funcNode != null) {
-            int expected = funcNode.getParameters().size();
-            int provided = node.getArguments().size();
-
-            if (expected != provided) {
-                manejadorErrores.agregarError(
-                    node.getLineNumber(),
-                    "Número de argumentos incorrecto en '" + node.getFunctionName() +
-                            "': esperado " + expected + ", recibido " + provided,
-                    "Semántico"
-                );
-            }
-        }
-
+        // Analizar argumentos
         for (ASTNode arg : node.getArguments()) {
             arg.accept(this);
         }
+
+        setTipoExpresion(node, funcSymbol.getType());
     }
 
     @Override
     public void visit(IfNode node) {
         node.getCondition().accept(this);
-        node.getThenBlock().accept(this);
+        Tipo condType = getTipoExpresion(node.getCondition());
+        
+        if (condType != Tipo.BOOLEAN && condType != Tipo.UNKNOWN) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "La condición del if debe ser booleana, no " + condType,
+                "Semántico"
+            );
+        }
 
+        node.getThenBlock().accept(this);
         if (node.getElseBlock() != null) {
             node.getElseBlock().accept(this);
         }
@@ -236,6 +388,16 @@ public class SemanticAnalyzer implements ASTVisitor {
     @Override
     public void visit(WhileNode node) {
         node.getCondition().accept(this);
+        Tipo condType = getTipoExpresion(node.getCondition());
+        
+        if (condType != Tipo.BOOLEAN && condType != Tipo.UNKNOWN) {
+            manejadorErrores.agregarError(
+                node.getLineNumber(),
+                "La condición del while debe ser booleana, no " + condType,
+                "Semántico"
+            );
+        }
+
         node.getBody().accept(this);
     }
 

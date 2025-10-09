@@ -82,16 +82,32 @@ public class Lexer {
     }
 
     private Token number() {
+        boolean isFloat = false;
+        
+        // Consumir parte entera
         while (Character.isDigit(peek())) advance();
 
+        // Verificar si tiene parte decimal
         if (peek() == '.' && Character.isDigit(peekNext())) {
-            advance();
+            isFloat = true;
+            advance(); // Consumir el punto
             while (Character.isDigit(peek())) advance();
         }
 
         String numberStr = source.substring(start, current);
-        double value = Double.parseDouble(numberStr);
-        return makeToken(TokenType.NUMBER, value);
+        
+        if (isFloat) {
+            double value = Double.parseDouble(numberStr);
+            return makeToken(TokenType.FLOAT_LITERAL, value);
+        } else {
+            int value;
+            try {
+                value = Integer.parseInt(numberStr);
+            } catch (NumberFormatException e) {
+                throw new RuntimeException("Número demasiado grande: " + numberStr + " en línea " + line);
+            }
+            return makeToken(TokenType.INTEGER, value);
+        }
     }
 
     private Token identifier() {

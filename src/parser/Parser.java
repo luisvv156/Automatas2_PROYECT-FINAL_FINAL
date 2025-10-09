@@ -208,7 +208,8 @@ public class Parser {
 
     private ASTNode parsePrimary() {
         int line = currentToken.getLine();
-        if (check(TokenType.NUMBER) || check(TokenType.STRING_LITERAL)) {
+        
+        if (check(TokenType.INTEGER) || check(TokenType.FLOAT_LITERAL) || check(TokenType.STRING_LITERAL)) {
             Object value = currentToken.getLiteral();
             nextToken();
             return new LiteralNode(line, value);
