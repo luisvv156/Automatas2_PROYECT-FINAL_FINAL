@@ -1,6 +1,10 @@
 package gui;
 
 import javax.swing.*;
+import javax.swing.text.DefaultHighlighter;
+import javax.swing.event.*;  // NUEVO: Para DocumentListener y DocumentEvent
+
+
 import java.awt.*;
 import java.awt.event.*;
 import lexer.Lexer;
@@ -16,6 +20,7 @@ import java.io.PrintStream;
 public class AnalizadorGUI1 extends JFrame {
     private JTextArea codeArea;
     private JTextArea resultArea;
+    private JTextArea lineNumbersArea; // NUEVO: Área para números de línea
     private JButton analyzeButton;
     private JButton clearButton;
     private JButton runButton;
@@ -25,46 +30,55 @@ public class AnalizadorGUI1 extends JFrame {
     public AnalizadorGUI1() {
         setTitle("Analizador de Código - Compilador");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(900, 700);
+        setSize(1000, 700); // Un poco más ancho para los números de línea
         setLocationRelativeTo(null);
         
         initComponents();
         layoutComponents();
         setupEvents();
+        setupLineNumbers(); // NUEVO: Configurar números de línea
         
         setLocationRelativeTo(null);
     }
 
     private void initComponents() {
-        // Área de código
-        codeArea = new JTextArea();
-        codeArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
-        codeArea.setBorder(BorderFactory.createTitledBorder("Código Fuente"));
-        codeArea.setBackground(new Color(245, 245, 245));
-        
-        // Área de resultados
-        resultArea = new JTextArea();
-        resultArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        resultArea.setBorder(BorderFactory.createTitledBorder("Resultados del Análisis"));
-        resultArea.setEditable(false);
-        resultArea.setBackground(new Color(240, 240, 240));
-        resultArea.setForeground(new Color(0, 0, 139));
-        
-        // Botones
-        analyzeButton = new JButton("🔍 Analizar");
-        analyzeButton.setToolTipText("Analizar código (Léxico, Sintáctico, Semántico)");
-        
-        runButton = new JButton("▶️ Ejecutar");
-        runButton.setToolTipText("Ejecutar código (si no hay errores)");
-        runButton.setEnabled(false);
-        
-        clearButton = new JButton("🧹 Limpiar");
-        clearButton.setToolTipText("Limpiar áreas de texto");
-        
-        // Etiqueta de estado
-        statusLabel = new JLabel("Listo");
-        statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-    }
+            // Área de código
+            codeArea = new JTextArea();
+            codeArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+            codeArea.setBackground(new Color(245, 245, 245));
+            
+            // NUEVO: Área para números de línea
+            lineNumbersArea = new JTextArea();
+            lineNumbersArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+            lineNumbersArea.setBackground(new Color(240, 240, 240));
+            lineNumbersArea.setForeground(Color.GRAY);
+            lineNumbersArea.setEditable(false);
+            lineNumbersArea.setFocusable(false);
+            lineNumbersArea.setBorder(BorderFactory.createEmptyBorder(3, 5, 0, 5));
+            
+            // Área de resultados
+            resultArea = new JTextArea();
+            resultArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+            resultArea.setBorder(BorderFactory.createTitledBorder("Resultados del Análisis"));
+            resultArea.setEditable(false);
+            resultArea.setBackground(new Color(240, 240, 240));
+            resultArea.setForeground(new Color(0, 0, 139));
+            
+            // Botones (igual que antes)
+            analyzeButton = new JButton("🔍 Analizar");
+            analyzeButton.setToolTipText("Analizar código (Léxico, Sintáctico, Semántico)");
+            
+            runButton = new JButton("▶️ Ejecutar");
+            runButton.setToolTipText("Ejecutar código (si no hay errores)");
+            runButton.setEnabled(false);
+            
+            clearButton = new JButton("🧹 Limpiar");
+            clearButton.setToolTipText("Limpiar áreas de texto");
+            
+            // Etiqueta de estado
+            statusLabel = new JLabel("Listo");
+            statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        }
 
     private void layoutComponents() {
         setLayout(new BorderLayout(10, 10));
@@ -72,9 +86,16 @@ public class AnalizadorGUI1 extends JFrame {
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
+        // NUEVO: Panel para código con números de línea
+        JPanel codePanel = new JPanel(new BorderLayout());
+        codePanel.setBorder(BorderFactory.createTitledBorder("Código Fuente"));
+        
         JScrollPane codeScroll = new JScrollPane(codeArea);
+        codeScroll.setRowHeaderView(lineNumbersArea); // NUEVO: Agregar números de línea
         codeScroll.setPreferredSize(new Dimension(0, 350));
-        mainPanel.add(codeScroll, BorderLayout.NORTH);
+        codePanel.add(codeScroll, BorderLayout.CENTER);
+        
+        mainPanel.add(codePanel, BorderLayout.NORTH);
         
         JScrollPane resultScroll = new JScrollPane(resultArea);
         resultScroll.setPreferredSize(new Dimension(0, 250));
@@ -94,6 +115,68 @@ public class AnalizadorGUI1 extends JFrame {
         
         add(mainPanel);
     }
+        
+    // NUEVO: Método para configurar números de línea (VERSIÓN CORREGIDA)
+     // MÉTODO CORREGIDO CON IMPORTS ADECUADOS
+    private void setupLineNumbers() {
+        // Actualizar números de línea cuando cambie el texto
+        codeArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) { 
+                updateLineNumbers(); 
+            }
+            
+            @Override
+            public void removeUpdate(DocumentEvent e) { 
+                updateLineNumbers(); 
+            }
+            
+            @Override
+            public void changedUpdate(DocumentEvent e) { 
+                updateLineNumbers(); 
+            }
+        });
+        
+        // Sincronizar el scroll (versión simplificada)
+        codeArea.addCaretListener(e -> {
+            try {
+                int caretPos = codeArea.getCaretPosition();
+                int line = codeArea.getLineOfOffset(caretPos);
+                lineNumbersArea.setCaretPosition(lineNumbersArea.getDocument().getLength());
+                lineNumbersArea.setCaretPosition(lineNumbersArea.getLineStartOffset(line));
+            } catch (Exception ex) {
+                // Ignorar errores
+            }
+        });
+        
+        updateLineNumbers();
+    }
+
+    // NUEVO: Método para actualizar números de línea (VERSIÓN MEJORADA)
+    private void updateLineNumbers() {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                String text = codeArea.getText();
+                int lineCount = codeArea.getLineCount();
+                
+                StringBuilder numbers = new StringBuilder();
+                for (int i = 1; i <= lineCount; i++) {
+                    numbers.append(i).append("\n");
+                }
+                
+                lineNumbersArea.setText(numbers.toString());
+                
+                // Ajustar el ancho del área de números
+                int maxDigits = String.valueOf(lineCount).length();
+                int width = Math.max(30, maxDigits * 8 + 10); // Ancho mínimo 30px
+                lineNumbersArea.setPreferredSize(new Dimension(width, lineNumbersArea.getHeight()));
+                
+            } catch (Exception e) {
+                // En caso de error, mostrar números básicos
+                lineNumbersArea.setText("1\n");
+            }
+        });
+    }
 
     private void setupEvents() {
         analyzeButton.addActionListener(e -> analyzeCode());
@@ -106,6 +189,7 @@ public class AnalizadorGUI1 extends JFrame {
             statusLabel.setText("Áreas limpiadas");
             runButton.setEnabled(false);
             currentProgram = null;
+            codeArea.getHighlighter().removeAllHighlights(); // NUEVO: Limpiar resaltados
         });
         
         // Ejemplo de código por defecto
@@ -122,6 +206,7 @@ public class AnalizadorGUI1 extends JFrame {
         try {
             setStatus("Analizando...", Color.BLUE);
             resultArea.setText(""); // Limpiar resultados anteriores
+            codeArea.getHighlighter().removeAllHighlights(); // NUEVO: Limpiar resaltados anteriores
             
             long startTime = System.currentTimeMillis();
             
@@ -147,7 +232,6 @@ public class AnalizadorGUI1 extends JFrame {
             
             long semanticTime = System.currentTimeMillis();
             
-            // CORREGIDO: Usar métodos disponibles en ManejadorErrores
             if (errores.hayErrores()) {
                 resultArea.append("\n✗ Se encontraron " + errores.getErrores().size() + " errores semánticos:\n");
                 for (ErrorSemantico error : errores.getErrores()) {
@@ -156,6 +240,9 @@ public class AnalizadorGUI1 extends JFrame {
                 resultArea.append("\n❌ No se puede ejecutar debido a errores");
                 runButton.setEnabled(false);
                 setStatus("Análisis completado con errores", Color.RED);
+                
+                // NUEVO: Resaltar líneas con errores
+                highlightErrorLines(errores.getErrores());
             } else {
                 resultArea.append("✓ Análisis semántico completado sin errores\n");
                 resultArea.append("✓ Tiempo de análisis: " + (semanticTime - startTime) + "ms\n");
@@ -235,6 +322,32 @@ public class AnalizadorGUI1 extends JFrame {
     private void showResult(String message, Color color) {
         resultArea.setText(message);
         resultArea.setForeground(color);
+    }
+    // NUEVO: Método para resaltar líneas con errores
+    private void highlightErrorLines(java.util.List<ErrorSemantico> errores) {
+        // Crear un highlighter para resaltar líneas con errores
+        codeArea.getHighlighter().removeAllHighlights();
+        
+        for (ErrorSemantico error : errores) {
+            int lineNumber = error.getLinea() - 1; // Las líneas empiezan en 0
+            if (lineNumber >= 0) {
+                try {
+                    int start = codeArea.getLineStartOffset(lineNumber);
+                    int end = codeArea.getLineEndOffset(lineNumber);
+                    
+                    // Resaltar la línea completa en rojo claro
+                    codeArea.getHighlighter().addHighlight(start, end, 
+                        new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 200, 200)));
+                } catch (Exception ex) {
+                    // Si no se puede resaltar, continuar con el siguiente error
+                }
+            }
+        }
+    }
+
+    // NUEVO: Método para agregar tooltips a las líneas con errores
+    private void addErrorTooltips(java.util.List<ErrorSemantico> errores) {
+        // Podríamos agregar tooltips aquí si queremos más interactividad
     }
 
     public static void main(String[] args) {
