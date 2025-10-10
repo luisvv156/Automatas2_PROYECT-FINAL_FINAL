@@ -34,6 +34,52 @@ public class ScopeManager {
             // throw new RuntimeException("No se puede salir del scope global");
         }
     }
+     // CORREGIDO: Método para debug
+    public void debugScopes() {
+        System.out.println("=== DEBUG SCOPES ===");
+        System.out.println("Total scopes: " + scopeStack.size());
+        
+        // Convertir Deque a Array para poder acceder por índice
+        Scope[] scopesArray = scopeStack.toArray(new Scope[0]);
+        
+        for (int i = 0; i < scopesArray.length; i++) {
+            Scope scope = scopesArray[i];
+            System.out.println("Scope " + i + " (parent: " + (scope.getParent() != null) + ")");
+            System.out.println("  Símbolos: " + scope.getSymbols().keySet());
+        }
+        System.out.println("===================");
+    }
+
+    // CORREGIDO: Método para buscar en todos los scopes con debug
+    public Symbol debugResolve(String name) {
+        System.out.println("Buscando símbolo: '" + name + "'");
+        Scope scope = getCurrentScope();
+        int depth = 0;
+        
+        while (scope != null) {
+            Symbol s = scope.resolve(name);
+            System.out.println("  Scope " + depth + ": " + (s != null ? "ENCONTRADO" : "no encontrado") + 
+                             " - símbolos: " + scope.getSymbols().keySet());
+            if (s != null) {
+                System.out.println("  ✓ Símbolo '" + name + "' ENCONTRADO en scope " + depth);
+                return s;
+            }
+            scope = scope.getParent();
+            depth++;
+        }
+        
+        System.out.println("  ✗ Símbolo '" + name + "' NO ENCONTRADO en ningún scope");
+        return null;
+    }
+
+    // NUEVO: Método para ver el scope actual
+    public void debugCurrentScope() {
+        Scope current = getCurrentScope();
+        System.out.println("=== SCOPE ACTUAL ===");
+        System.out.println("Símbolos: " + current.getSymbols().keySet());
+        System.out.println("Tiene parent: " + (current.getParent() != null));
+        System.out.println("===================");
+    }
 
     /**
      * Devuelve el scope actual (el top de la pila).
@@ -54,7 +100,14 @@ public class ScopeManager {
      * (Asume que Scope tiene un método declareSymbol(name, symbol))
      */
     public void declareSymbol(String name, Symbol symbol) {
-        getCurrentScope().declareSymbol(name, symbol);
+        System.out.println("SCOPE MANAGER - Declarando símbolo: " + name);
+        Scope current = getCurrentScope();
+        System.out.println("Scope actual: " + current.getSymbols().keySet());
+        
+        current.declareSymbol(name, symbol);
+        
+        System.out.println("Después de declarar: " + current.getSymbols().keySet());
+        System.out.println("¿Símbolo '" + name + "' ahora en scope?: " + current.containsSymbol(name));
     }
 
     /**

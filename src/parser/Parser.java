@@ -73,55 +73,85 @@ public class Parser {
     }
 
     private Token expectTypeToken() {
-        if (isTypeToken(currentToken.getType())) return nextToken();
+        System.out.println("DEBUG PARSER: expectTypeToken - currentToken: " + currentToken.getType());
+        
+        if (isTypeToken(currentToken.getType())) {
+            Token result = nextToken();
+            System.out.println("DEBUG PARSER: expectTypeToken OK - tipo: " + result.getLexeme());
+            return result;
+        }
+        
+        System.out.println("DEBUG PARSER: ERROR expectTypeToken - Se esperaba tipo, se encontró: " + currentToken.getType());
         throw new RuntimeException("Se esperaba tipo de dato, se encontró: " + currentToken.getType());
     }
 
     private VariableDeclNode parseVariableDeclaration() {
-            expect(TokenType.VAR);
-            int line = currentToken.getLine();
-            String varName = expect(TokenType.IDENTIFIER).getLexeme();
-            expect(TokenType.COLON);
-            
-            // Verificar si es tipo array (ej: int[])
-            String typeName;
-            if (check(TokenType.INT) && peekToken.getType() == TokenType.LEFT_BRACKET) {
-                nextToken(); // consume INT
-                expect(TokenType.LEFT_BRACKET);
-                expect(TokenType.RIGHT_BRACKET);
-                typeName = "int[]";
-            } else if (check(TokenType.FLOAT) && peekToken.getType() == TokenType.LEFT_BRACKET) {
-                nextToken(); // consume FLOAT
-                expect(TokenType.LEFT_BRACKET);
-                expect(TokenType.RIGHT_BRACKET);
-                typeName = "float[]";
-            } else if (check(TokenType.STRING) && peekToken.getType() == TokenType.LEFT_BRACKET) {
-                nextToken(); // consume STRING
-                expect(TokenType.LEFT_BRACKET);
-                expect(TokenType.RIGHT_BRACKET);
-                typeName = "string[]";
-            } else if (check(TokenType.BOOLEAN) && peekToken.getType() == TokenType.LEFT_BRACKET) {
-                nextToken(); // consume BOOLEAN
-                expect(TokenType.LEFT_BRACKET);
-                expect(TokenType.RIGHT_BRACKET);
-                typeName = "boolean[]";
+        System.out.println("DEBUG PARSER: === INICIANDO parseVariableDeclaration ===");
+        
+        expect(TokenType.VAR);
+        System.out.println("DEBUG PARSER: Token VAR OK");
+        
+        int line = currentToken.getLine();
+        System.out.println("DEBUG PARSER: Línea: " + line);
+        
+        String varName = expect(TokenType.IDENTIFIER).getLexeme();
+        System.out.println("DEBUG PARSER: Identificador: " + varName);
+        
+        expect(TokenType.COLON);
+        System.out.println("DEBUG PARSER: Token COLON OK");
+        
+        // Verificar si es tipo array (ej: int[])
+        String typeName;
+        if (check(TokenType.INT) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+            System.out.println("DEBUG PARSER: Es array INT");
+            nextToken(); // consume INT
+            expect(TokenType.LEFT_BRACKET);
+            expect(TokenType.RIGHT_BRACKET);
+            typeName = "int[]";
+        } else if (check(TokenType.FLOAT) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+            System.out.println("DEBUG PARSER: Es array FLOAT");
+            nextToken(); // consume FLOAT
+            expect(TokenType.LEFT_BRACKET);
+            expect(TokenType.RIGHT_BRACKET);
+            typeName = "float[]";
+        } else if (check(TokenType.STRING) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+            System.out.println("DEBUG PARSER: Es array STRING");
+            nextToken(); // consume STRING
+            expect(TokenType.LEFT_BRACKET);
+            expect(TokenType.RIGHT_BRACKET);
+            typeName = "string[]";
+        } else if (check(TokenType.BOOLEAN) && peekToken.getType() == TokenType.LEFT_BRACKET) {
+            System.out.println("DEBUG PARSER: Es array BOOLEAN");
+            nextToken(); // consume BOOLEAN
+            expect(TokenType.LEFT_BRACKET);
+            expect(TokenType.RIGHT_BRACKET);
+            typeName = "boolean[]";
+        } else {
+            // Tipo normal (no array)
+            System.out.println("DEBUG PARSER: Buscando tipo normal - currentToken: " + currentToken.getType());
+            Token typeToken = expectTypeToken();
+            typeName = typeToken.getLexeme();
+            System.out.println("DEBUG PARSER: Tipo encontrado: " + typeName);
+        }
+
+        ASTNode initialValue = null;
+        if (match(TokenType.ASSIGN)) {
+            System.out.println("DEBUG PARSER: Hay asignación, parseando valor inicial...");
+            if (typeName.endsWith("[]")) {
+                initialValue = parseArrayLiteral();
             } else {
-                // Tipo normal (no array)
-                Token typeToken = expectTypeToken();
-                typeName = typeToken.getLexeme();
+                initialValue = parseExpression();
             }
+            System.out.println("DEBUG PARSER: Valor inicial parseado");
+        }
 
-            ASTNode initialValue = null;
-            if (match(TokenType.ASSIGN)) {
-                if (typeName.endsWith("[]")) {
-                    initialValue = parseArrayLiteral();
-                } else {
-                    initialValue = parseExpression();
-                }
-            }
-
-            expect(TokenType.SEMICOLON);
-            return new VariableDeclNode(line, varName, typeName, initialValue);
+        expect(TokenType.SEMICOLON);
+        System.out.println("DEBUG PARSER: Token SEMICOLON OK");
+        
+        System.out.println("DEBUG PARSER: Creando VariableDeclNode: " + varName + " : " + typeName);
+        System.out.println("DEBUG PARSER: === FIN parseVariableDeclaration ===");
+        
+        return new VariableDeclNode(line, varName, typeName, initialValue);
     }
 
     private BlockNode parseBlock() {
@@ -241,9 +271,11 @@ public class Parser {
 
     private ASTNode parsePrimary() {
         int line = currentToken.getLine();
+        System.out.println("DEBUG PARSER: parsePrimary - currentToken: " + currentToken.getType() + " : " + currentToken.getLexeme());
         
-        if (check(TokenType.INTEGER) || check(TokenType.FLOAT_LITERAL) || check(TokenType.STRING_LITERAL)) {
+        if (check(TokenType.INTEGER) || check(TokenType.FLOAT_LITERAL) || check(TokenType.STRING_LITERAL) || check(TokenType.TRUE) || check(TokenType.FALSE)) {
             Object value = currentToken.getLiteral();
+            System.out.println("DEBUG PARSER: Literal encontrado: " + value + " (tipo: " + currentToken.getType() + ")");
             nextToken();
             return new LiteralNode(line, value);
         }
@@ -330,7 +362,15 @@ public class Parser {
     }
 
     private Token expect(TokenType type) {
-        if (currentToken.getType() == type) return nextToken();
+        System.out.println("DEBUG PARSER: expect(" + type + ") - currentToken: " + currentToken.getType());
+        
+        if (currentToken.getType() == type) {
+            Token result = nextToken();
+            System.out.println("DEBUG PARSER: expect OK - siguiente token: " + currentToken.getType());
+            return result;
+        }
+        
+        System.out.println("DEBUG PARSER: ERROR expect - Se esperaba " + type + ", se encontró " + currentToken.getType());
         throw new RuntimeException("Se esperaba " + type + ", se encontró " + currentToken.getType() + " en línea " + currentToken.getLine());
     }
 

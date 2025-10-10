@@ -16,6 +16,11 @@ public class SemanticAnalyzer implements ASTVisitor {
         this.manejadorErrores = new ManejadorErrores();
         this.tiposExpresiones = new HashMap<>();
         registrarFuncionesPredefinidas();
+
+            // DEBUG: Ver scopes iniciales
+        System.out.println("=== INICIALIZANDO SEMANTIC ANALYZER ===");
+        scopeManager.debugScopes();
+        System.out.println("=====================================");
     }
 
     private void registrarFuncionesPredefinidas() {
@@ -82,7 +87,8 @@ public class SemanticAnalyzer implements ASTVisitor {
     private Tipo inferirTipoLiteral(LiteralNode node) {
         Object value = node.getValue();
         
-        // Si el valor es null, intentar inferir del contexto (para compatibilidad)
+        System.out.println("DEBUG SEMANTIC: inferirTipoLiteral - valor: " + value + " (clase: " + (value != null ? value.getClass().getSimpleName() : "null") + ")");
+        
         if (value == null) {
             return Tipo.UNKNOWN;
         }
@@ -93,6 +99,12 @@ public class SemanticAnalyzer implements ASTVisitor {
         } else if (value instanceof Double || value instanceof Float) {
             return Tipo.FLOAT;
         } else if (value instanceof String) {
+            // CORREGIDO: Verificar si el string es "true" o "false"
+            String strValue = (String) value;
+            if ("true".equals(strValue) || "false".equals(strValue)) {
+                System.out.println("DEBUG SEMANTIC: String '" + strValue + "' detectado como BOOLEAN");
+                return Tipo.BOOLEAN;
+            }
             return Tipo.STRING;
         } else if (value instanceof Boolean) {
             return Tipo.BOOLEAN;
@@ -108,17 +120,11 @@ public class SemanticAnalyzer implements ASTVisitor {
         
         Symbol symbol = scopeManager.resolve(node.getName());
         if (symbol == null) {
+            System.out.println("DEBUG: Identificador no encontrado: " + node.getName());
             return Tipo.UNKNOWN;
         }
         
-        String typeStr = symbol.getType().toString();
-        
-        // CORREGIDO: Manejar tipos de array
-        if (typeStr.endsWith("[]")) {
-            // Para arrays, devolver el tipo base + "[]"
-            return Tipo.fromString(typeStr);
-        }
-        
+        System.out.println("DEBUG: Identificador '" + node.getName() + "' encontrado, tipo: " + symbol.getType());
         return symbol.getType();
     }
     // método para manejar tipos de array
@@ -236,55 +242,48 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(VariableDeclNode node) {
+        System.out.println("=== INICIANDO VISIT VARIABLE DECL ===");
+        System.out.println("Variable: " + node.getName() + ", Tipo: " + node.getType());
+        
         if (node.getName() == null) {
+            System.out.println("ERROR: Nombre es null");
             manejadorErrores.agregarError(
                 node.getLineNumber(), "Nombre de variable no puede ser null", "Semántico"
             );
             return;
         }
 
-        if (scopeManager.getCurrentScope().resolve(node.getName()) != null) {
-            manejadorErrores.agregarError(
-                node.getLineNumber(),
-                "Variable '" + node.getName() + "' ya declarada en este scope",
-                "Semántico"
-            );
-            return;
-        }
+        // DEBUG: Ver scope actual ANTES de declarar
+        System.out.println("--- ANTES de declarar ---");
+        scopeManager.debugScopes();
+        Symbol existing = scopeManager.debugResolve(node.getName());
+        System.out.println("Variable ya existe?: " + (existing != null));
 
-        // CORREGIDO: Registrar el tipo de array correctamente
-        String typeName = node.getType();
-        Tipo tipoVariable;
-        
-        if (typeName.endsWith("[]")) {
-            // Para arrays, usar el tipo completo (ej: "int[]")
-            tipoVariable = Tipo.fromString(typeName);
-        } else {
-            // Para tipos normales
-            tipoVariable = Tipo.fromString(typeName);
-        }
-
+        Tipo tipoVariable = Tipo.fromString(node.getType());
         Symbol varSymbol = new Symbol(node.getName(), tipoVariable, null, false);
+        
+        System.out.println("Declarando símbolo: " + node.getName() + " : " + tipoVariable);
         scopeManager.declareSymbol(node.getName(), varSymbol);
+        
+        // DEBUG: Ver scope actual DESPUÉS de declarar
+        System.out.println("--- DESPUÉS de declarar ---");
+        scopeManager.debugScopes();
+        Symbol verify = scopeManager.debugResolve(node.getName());
+        System.out.println("Verificación: " + (verify != null ? "✅ DECLARADA" : "❌ NO DECLARADA"));
+        
+        System.out.println("=== FIN VISIT VARIABLE DECL ===");
 
         // Verificar tipo del valor inicial
         if (node.getInitialValue() != null) {
             node.getInitialValue().accept(this);
+            Tipo tipoValor = getTipoExpresion(node.getInitialValue());
             
-            if (node.getInitialValue() instanceof ArrayNode) {
-                // Para arrays, el tipo ya está verificado durante el parsing
-                ArrayNode arrayNode = (ArrayNode) node.getInitialValue();
-                setTipoExpresion(node.getInitialValue(), tipoVariable);
-            } else {
-                Tipo tipoValor = getTipoExpresion(node.getInitialValue());
-                
-                if (!Tipo.esCompatibleParaAsignacion(tipoVariable, tipoValor)) {
-                    manejadorErrores.agregarError(
-                        node.getLineNumber(),
-                        "No se puede asignar valor de tipo " + tipoValor + " a variable de tipo " + tipoVariable,
-                        "Semántico"
-                    );
-                }
+            if (!Tipo.esCompatibleParaAsignacion(tipoVariable, tipoValor)) {
+                manejadorErrores.agregarError(
+                    node.getLineNumber(),
+                    "No se puede asignar valor de tipo " + tipoValor + " a variable de tipo " + tipoVariable,
+                    "Semántico"
+                );
             }
         }
     }
@@ -459,16 +458,27 @@ public class SemanticAnalyzer implements ASTVisitor {
 
     @Override
     public void visit(IdentifierNode node) {
-        Tipo tipo = inferirTipoIdentificador(node);
-        setTipoExpresion(node, tipo);
-
-        if (tipo == Tipo.UNKNOWN && !node.isBooleanLiteral()) {
+        // DEBUG: Verificar scopes
+        scopeManager.debugScopes();
+        Symbol symbol = scopeManager.debugResolve(node.getName());
+        
+        if (node.isBooleanLiteral()) {
+            setTipoExpresion(node, Tipo.BOOLEAN);
+            return;
+        }
+        
+        if (symbol == null) {
+            setTipoExpresion(node, Tipo.UNKNOWN);
             manejadorErrores.agregarError(
                 node.getLineNumber(),
-                "Identificador no declarado: " + node.getName(),
+                "Identificador no declarado: '" + node.getName() + "'",
                 "Semántico"
             );
+            return;
         }
+        
+        setTipoExpresion(node, symbol.getType());
+        System.out.println("DEBUG: Identificador '" + node.getName() + "' - tipo: " + symbol.getType());
     }
 
     @Override
@@ -505,6 +515,9 @@ public class SemanticAnalyzer implements ASTVisitor {
         node.getCondition().accept(this);
         Tipo condType = getTipoExpresion(node.getCondition());
         
+        System.out.println("DEBUG IfNode - Condición: " + node.getCondition().getClass().getSimpleName() + ", Tipo: " + condType);
+        
+        // Solo dar error si sabemos con certeza que no es booleano
         if (condType != Tipo.BOOLEAN && condType != Tipo.UNKNOWN) {
             manejadorErrores.agregarError(
                 node.getLineNumber(),

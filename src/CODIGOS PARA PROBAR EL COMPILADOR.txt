@@ -1,0 +1,94 @@
+CODIGOS PARA PROBAR EL COMPILADOR
+-----------------------------------------------------------------
+// Operaciones básicas con enteros y flotantes 
+var a: int = 15;
+var b: int = 3;
+
+var c: float = 10.9;
+var resultado: float = b + c;
+print(resultado);
+
+print(a + b);  // 18
+print(a - b);  // 12  
+print(a * b);  // 45
+print(a / b);  // 5
+----------------------------------------------------------------
+// Tabla de multiplicar
+var i: int = 1;
+while (i <= 3) {
+    var j: int = 1;
+    while (j <= 3) {
+        var resultado: int = i * j;
+        print(i + " x " + j + " = " + resultado);
+        j = j + 1;
+    }
+    i = i + 1;
+}
+----------------------------------------------------------------
+// Manipulación de arrays de strings
+var frutas: string[] = ["manzana", "banana", "naranja"];
+var i: int = 0;
+
+print("Mis frutas:");
+while (i < 3) {
+    print("- " + frutas[i]);
+    i = i + 1;
+}
+-------------------------------------------------------------
+// Calcular promedio de notas
+var notas: int[] = [85, 90, 78, 92, 88];
+var suma: int = 0;
+var i: int = 0;
+
+while (i < 5) {
+    suma = suma + notas[i];
+    i = i + 1;
+}
+
+var promedio: int = suma / 5;
+print("Promedio: " + promedio);  // 86
+------------------------------------------------------------
+// Encontrar el número más grande USANDO UN ARRAY
+var numeros: int[] = [3, 7, 2, 9, 1, 5];
+var maximo: int = numeros[0];
+var i: int = 1;
+
+while (i < 6) {
+    if (numeros[i] > maximo) {
+        maximo = numeros[i];
+    }
+    i = i + 1;
+}
+
+print("Número máximo: " + maximo);  // 9
+
+----------------------------------------------
+
+// PRUEBA CON TODAS LAS FUNCIONALIDADES COMPLETA - Sistema de Estudiantes
+var estudiantes: string[] = ["Carlitos", "Pedrito", "Marta"];
+var notas: int[] = [85, 92, 78];
+
+print("=== SISTEMA DE ESTUDIANTES ===");
+
+var i: int = 0;
+while (i < 3) {
+    var situacion: string = "Aprobado";
+    if (notas[i] < 80) {
+        situacion = "Necesita mejorar";
+    }
+    
+    print(estudiantes[i] + ": " + notas[i] + " - " + situacion);
+    i = i + 1;
+}
+
+// Calcular promedio general
+var total: int = 0;
+i = 0;
+while (i < 3) {
+    total = total + notas[i];
+    i = i + 1;
+}
+var promedioGeneral: int = total / 3;
+print("Promedio general: " + promedioGeneral);
+
+

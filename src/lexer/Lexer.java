@@ -113,10 +113,19 @@ public class Lexer {
         }
     }
 
+    
     private Token identifier() {
         while (Character.isLetterOrDigit(peek())) advance();
         String text = source.substring(start, current);
         TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
+        
+        // CORREGIR: Para booleanos literales, usar Boolean en lugar de String
+        if (type == TokenType.TRUE) {
+            return makeToken(type, true);  // Boolean true, no String "true"
+        } else if (type == TokenType.FALSE) {
+            return makeToken(type, false); // Boolean false, no String "false"
+        }
+        
         return makeToken(type, text);
     }
 
