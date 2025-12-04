@@ -5,7 +5,10 @@ public enum TokenType {
     FUNCTION, VAR, IF, ELSE, WHILE, RETURN, PRINT,
     INT, FLOAT, STRING, BOOLEAN, VOID,
     
-    // Literales (MODIFICADO: separar INTEGER y FLOAT)
+    // Nuevas palabras reservadas para clases
+    CLASS, NEW, THIS, EXTENDS, PUBLIC, PRIVATE, // AÑADIDOS
+    
+    // Literales
     INTEGER, FLOAT_LITERAL, STRING_LITERAL, IDENTIFIER, TRUE, FALSE,
     
     // Operadores
@@ -14,7 +17,7 @@ public enum TokenType {
     
     // Símbolos
     LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE,
-    COMMA, SEMICOLON, COLON,
+    COMMA, SEMICOLON, COLON, DOT, // AÑADIDO DOT
     
     // Arrays
     LEFT_BRACKET, RIGHT_BRACKET,

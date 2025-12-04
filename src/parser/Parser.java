@@ -37,10 +37,95 @@ public class Parser {
     }
 
     private ASTNode parseDeclaration() {
+        if (check(TokenType.CLASS)) return parseClassDeclaration();
         if (check(TokenType.FUNCTION)) return parseFunctionDeclaration();
         if (check(TokenType.VAR)) return parseVariableDeclaration();
         if (check(TokenType.SEMICOLON)) { nextToken(); return null; } // declaración vacía
         return parseStatement();
+    }
+
+    // NUEVO MÉTODO: parsear declaración de clase
+    private ClassDeclNode parseClassDeclaration() {
+        expect(TokenType.CLASS);
+        int line = currentToken.getLine();
+        String className = expect(TokenType.IDENTIFIER).getLexeme();
+        
+        ClassDeclNode classNode = new ClassDeclNode(line, className);
+        
+        // Herencia
+        if (match(TokenType.EXTENDS)) {
+            String superClassName = expect(TokenType.IDENTIFIER).getLexeme();
+            classNode.setSuperClassName(superClassName);
+        }
+        
+        expect(TokenType.LEFT_BRACE);
+        
+        // Parsear miembros de la clase
+        while (!check(TokenType.RIGHT_BRACE) && !check(TokenType.EOF)) {
+            parseClassMember(classNode);
+        }
+        
+        expect(TokenType.RIGHT_BRACE);
+        return classNode;
+    }
+
+    // NUEVO MÉTODO: parsear miembro de clase
+    private void parseClassMember(ClassDeclNode classNode) {
+        // Visibilidad (opcional)
+        String visibility = null;
+        if (match(TokenType.PUBLIC)) {
+            visibility = "public";
+        } else if (match(TokenType.PRIVATE)) {
+            visibility = "private";
+        }
+        
+        // Puede ser campo o método
+        if (check(TokenType.FUNCTION)) {
+            // Es un método
+            expect(TokenType.FUNCTION);
+            String methodName = expect(TokenType.IDENTIFIER).getLexeme();
+            MethodDeclNode method = parseMethodDeclaration(methodName);
+            method.setVisibility(visibility);
+            classNode.addMethod(method);
+        } else {
+            // Es un campo (variable)
+            VariableDeclNode field = parseVariableDeclaration();
+            classNode.addField(field);
+        }
+    }
+
+    // NUEVO MÉTODO: parsear declaración de método
+    private MethodDeclNode parseMethodDeclaration(String methodName) {
+        int line = currentToken.getLine();
+        MethodDeclNode method = new MethodDeclNode(line, methodName);
+        
+        expect(TokenType.LEFT_PAREN);
+        
+        // Parámetros
+        if (!check(TokenType.RIGHT_PAREN)) {
+            do {
+                String paramName = expect(TokenType.IDENTIFIER).getLexeme();
+                expect(TokenType.COLON);
+                Token typeToken = expectTypeToken();
+                VariableDeclNode param = new VariableDeclNode(
+                    line, paramName, typeToken.getLexeme(), null
+                );
+                method.addParameter(param);
+            } while (match(TokenType.COMMA));
+        }
+        
+        expect(TokenType.RIGHT_PAREN);
+        
+        // Tipo de retorno (opcional, por defecto void)
+        if (match(TokenType.COLON)) {
+            Token returnTypeToken = expectTypeToken();
+            method.setReturnType(returnTypeToken.getLexeme());
+        }
+        
+        // Cuerpo del método
+        method.setBody(parseBlock());
+        
+        return method;
     }
 
     private FunctionNode parseFunctionDeclaration() {
@@ -78,6 +163,13 @@ public class Parser {
         if (isTypeToken(currentToken.getType())) {
             Token result = nextToken();
             System.out.println("DEBUG PARSER: expectTypeToken OK - tipo: " + result.getLexeme());
+            return result;
+        }
+        
+        // NUEVO: Permitir identificadores como tipos (para clases)
+        if (currentToken.getType() == TokenType.IDENTIFIER) {
+            Token result = nextToken();
+            System.out.println("DEBUG PARSER: expectTypeToken (clase) OK - tipo: " + result.getLexeme());
             return result;
         }
         
@@ -127,7 +219,7 @@ public class Parser {
             expect(TokenType.RIGHT_BRACKET);
             typeName = "boolean[]";
         } else {
-            // Tipo normal (no array)
+            // Tipo normal (no array) - puede ser tipo básico o nombre de clase
             System.out.println("DEBUG PARSER: Buscando tipo normal - currentToken: " + currentToken.getType());
             Token typeToken = expectTypeToken();
             typeName = typeToken.getLexeme();
@@ -164,15 +256,37 @@ public class Parser {
         expect(TokenType.RIGHT_BRACE);
         return block;
     }
-
     private ASTNode parseStatement() {
         if (check(TokenType.IF)) return parseIfStatement();
         if (check(TokenType.WHILE)) return parseWhileStatement();
         if (check(TokenType.RETURN)) return parseReturnStatement();
         if (check(TokenType.LEFT_BRACE)) return parseBlock();
-        if (check(TokenType.IDENTIFIER) && peekToken.getType() == TokenType.ASSIGN) return parseAssignment();
         if (check(TokenType.PRINT)) return parsePrintStatement();
-        return parseExpressionStatement();
+        
+        // Para cualquier otra cosa que empiece con identificador,
+        // parseamos como expresión y luego vemos si hay asignación
+        int line = currentToken.getLine();
+        ASTNode expr = parseExpression();
+        
+        // Verificar si es asignación
+        if (check(TokenType.ASSIGN)) {
+            expect(TokenType.ASSIGN);
+            ASTNode value = parseExpression();
+            expect(TokenType.SEMICOLON);
+            
+            // Crear nodo de asignación apropiado
+            if (expr instanceof IdentifierNode) {
+                return new AssignmentNode(line, ((IdentifierNode) expr).getName(), value);
+            } else if (expr instanceof FieldAccessNode) {
+                return new AssignmentNode(line, expr, value);
+            } else {
+                throw new RuntimeException("Lado izquierdo de asignación inválido en línea " + line);
+            }
+        }
+        
+        // Si no es asignación, es un expression statement
+        expect(TokenType.SEMICOLON);
+        return new ExpressionStatementNode(line, expr);
     }
 
     private ASTNode parseIfStatement() {
@@ -205,16 +319,6 @@ public class Parser {
         expect(TokenType.SEMICOLON);
         return new ReturnNode(line, value);
     }
-
-    private ASTNode parseAssignment() {
-        int line = currentToken.getLine();
-        String varName = expect(TokenType.IDENTIFIER).getLexeme();
-        expect(TokenType.ASSIGN);
-        ASTNode value = parseExpression();
-        expect(TokenType.SEMICOLON);
-        return new AssignmentNode(line, varName, value);
-    }
-
     private ASTNode parseExpressionStatement() {
         int line = currentToken.getLine();
         ASTNode expr = parseExpression();
@@ -273,6 +377,50 @@ public class Parser {
         int line = currentToken.getLine();
         System.out.println("DEBUG PARSER: parsePrimary - currentToken: " + currentToken.getType() + " : " + currentToken.getLexeme());
         
+        // NUEVO: Manejar 'new' para instancias de clase
+        if (check(TokenType.NEW)) {
+            return parseNewInstance();
+        }
+        
+        ASTNode expr = parsePrimaryWithoutDot();
+        
+        // NUEVO: Manejar acceso a campos y llamadas a métodos con notación punto
+        while (check(TokenType.DOT)) {
+            nextToken(); // consume DOT
+            if (check(TokenType.IDENTIFIER)) {
+                String memberName = expect(TokenType.IDENTIFIER).getLexeme();
+                
+                if (check(TokenType.LEFT_PAREN)) {
+                    // Es una llamada a método
+                    MethodCallNode methodCall = new MethodCallNode(line, expr, memberName);
+                    expect(TokenType.LEFT_PAREN);
+                    if (!check(TokenType.RIGHT_PAREN)) {
+                        do {
+                            methodCall.addArgument(parseExpression());
+                        } while (match(TokenType.COMMA));
+                    }
+                    expect(TokenType.RIGHT_PAREN);
+                    expr = methodCall;
+                } else {
+                    // Es acceso a campo
+                    expr = new FieldAccessNode(line, expr, memberName);
+                }
+            }
+        }
+        
+        return expr;
+    }
+    
+    private ASTNode parsePrimaryWithoutDot() {
+        int line = currentToken.getLine();
+        System.out.println("DEBUG PARSER: parsePrimaryWithoutDot - currentToken: " + currentToken.getType() + " : " + currentToken.getLexeme());
+        
+        // NUEVO: Manejar 'this' para referencias a la instancia actual
+        if (check(TokenType.THIS)) {
+            nextToken();
+            return new IdentifierNode(line, "this");
+        }
+        
         if (check(TokenType.INTEGER) || check(TokenType.FLOAT_LITERAL) || check(TokenType.STRING_LITERAL) || check(TokenType.TRUE) || check(TokenType.FALSE)) {
             Object value = currentToken.getLiteral();
             System.out.println("DEBUG PARSER: Literal encontrado: " + value + " (tipo: " + currentToken.getType() + ")");
@@ -299,6 +447,26 @@ public class Parser {
         
         throw new RuntimeException("Expresión inválida en línea " + line);
     }
+    
+    // NUEVO: Método para parsear creación de instancias con 'new'
+    private ASTNode parseNewInstance() {
+        expect(TokenType.NEW);
+        int line = currentToken.getLine();
+        String className = expect(TokenType.IDENTIFIER).getLexeme();
+        
+        ClassInstanceNode instance = new ClassInstanceNode(line, className);
+        
+        expect(TokenType.LEFT_PAREN);
+        if (!check(TokenType.RIGHT_PAREN)) {
+            do {
+                instance.addArgument(parseExpression());
+            } while (match(TokenType.COMMA));
+        }
+        expect(TokenType.RIGHT_PAREN);
+        
+        return instance;
+    }
+
     private ArrayAccessNode parseArrayAccess(String arrayName) {
         int line = currentToken.getLine();
         expect(TokenType.LEFT_BRACKET);
@@ -334,7 +502,6 @@ public class Parser {
         expect(TokenType.RIGHT_BRACKET);
         return new ArrayNode(line, elements, elementType != null ? elementType : "unknown");
     }
-
 
     private CallNode parseFunctionCall(String functionName) {
         int line = currentToken.getLine();
@@ -397,7 +564,8 @@ public class Parser {
                 currentToken.getType() == TokenType.VAR ||
                 currentToken.getType() == TokenType.IF ||
                 currentToken.getType() == TokenType.WHILE ||
-                currentToken.getType() == TokenType.RETURN) return;
+                currentToken.getType() == TokenType.RETURN ||
+                currentToken.getType() == TokenType.CLASS) return; // AÑADIDO CLASS
             nextToken();
         }
     }

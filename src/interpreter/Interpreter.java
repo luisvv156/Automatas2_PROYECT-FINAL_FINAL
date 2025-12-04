@@ -13,6 +13,9 @@ public class Interpreter implements Evaluator {
     private Stack<Map<String, Object>> scopeStack;
     private int executionDepth;
     private static final int MAX_EXECUTION_DEPTH = 1000;
+    private Map<String, ClassDeclNode> classes;  // Almacenar definiciones de clases
+    private Object currentInstance;  // Instancia actual para 'this'
+
 
     public Interpreter() {
         this.variables = new HashMap<>();
@@ -20,10 +23,21 @@ public class Interpreter implements Evaluator {
         this.scopeStack = new Stack<>();
         this.scopeStack.push(new HashMap<>()); // Scope global
         this.executionDepth = 0;
-    }
+        this.classes = new HashMap<>();  // NUEVO
+        this.currentInstance = null;     // NUEVO
 
+
+    }
     public void interpret(ProgramNode program) {
-        // Registrar funciones primero
+        // NUEVO: Registrar clases primero
+        for (ASTNode node : program.getDeclarations()) {
+            if (node instanceof ClassDeclNode) {
+                ClassDeclNode classNode = (ClassDeclNode) node;
+                classes.put(classNode.getClassName(), classNode);
+            }
+        }
+        
+        // Registrar funciones
         for (ASTNode node : program.getDeclarations()) {
             if (node instanceof FunctionNode) {
                 FunctionNode func = (FunctionNode) node;
@@ -33,7 +47,7 @@ public class Interpreter implements Evaluator {
 
         // Ejecutar código global
         for (ASTNode node : program.getDeclarations()) {
-            if (!(node instanceof FunctionNode)) {
+            if (!(node instanceof FunctionNode) && !(node instanceof ClassDeclNode)) {
                 evaluate(node);
             }
         }
@@ -56,11 +70,16 @@ public class Interpreter implements Evaluator {
         if (node instanceof VariableDeclNode) return evaluate((VariableDeclNode) node);
         if (node instanceof WhileNode) return evaluate((WhileNode) node);
         if (node instanceof UnaryExpressionNode) return evaluate((UnaryExpressionNode) node); // CORREGIDO: Agregado
-        if (node instanceof ArrayNode) {
-            return evaluate((ArrayNode) node);
-        }
+        if (node instanceof ArrayNode) { return evaluate((ArrayNode) node);}
         if (node instanceof ArrayAccessNode) return evaluate((ArrayAccessNode) node);
-            return null;
+        // NUEVO: Soporte para clases
+        if (node instanceof ClassDeclNode) return evaluate((ClassDeclNode) node);
+        if (node instanceof ClassInstanceNode) return evaluate((ClassInstanceNode) node);
+        if (node instanceof FieldAccessNode) return evaluate((FieldAccessNode) node);
+        if (node instanceof MethodCallNode) return evaluate((MethodCallNode) node);
+        if (node instanceof MethodDeclNode) return evaluate((MethodDeclNode) node);
+
+        return null;
         
     }
 
@@ -85,6 +104,25 @@ public class Interpreter implements Evaluator {
     public Object evaluate(AssignmentNode node) {
         Object value = evaluate(node.getValue());
         
+        // NUEVO: Manejar asignaciones a campos (p.nombre = "Juan")
+        if (node.isFieldAssignment()) {
+            ASTNode target = node.getTarget();
+            
+            if (target instanceof FieldAccessNode) {
+                FieldAccessNode fieldAccess = (FieldAccessNode) target;
+                Object object = evaluate(fieldAccess.getObject());
+                
+                if (!(object instanceof ClassInstance)) {
+                    throw new RuntimeException("No se puede asignar campo a tipo no-clase");
+                }
+                
+                ClassInstance instance = (ClassInstance) object;
+                instance.setField(fieldAccess.getFieldName(), value);
+                return value;
+            }
+        }
+        
+        // ORIGINAL: Asignaciones simples (x = 5)
         // Buscar en todos los scopes desde el más interno
         for (int i = scopeStack.size() - 1; i >= 0; i--) {
             Map<String, Object> scope = scopeStack.get(i);
@@ -313,6 +351,101 @@ public class Interpreter implements Evaluator {
         return null;
     }
 
+    // NUEVO: Evaluar declaración de clase (solo registra, no ejecuta)
+    public Object evaluate(ClassDeclNode node) {
+        classes.put(node.getClassName(), node);
+        return null;
+    }
+
+    // NUEVO: Evaluar creación de instancia (new Persona())
+    public Object evaluate(ClassInstanceNode node) {
+        String className = node.getClassName();
+        ClassDeclNode classDecl = classes.get(className);
+        
+        if (classDecl == null) {
+            throw new RuntimeException("Clase no encontrada: " + className);
+        }
+        
+        // Crear nueva instancia
+        ClassInstance instance = new ClassInstance(className, classDecl);
+        
+        // TODO: Ejecutar constructor si existe
+        // Por ahora, las instancias se crean con campos en null
+        
+        return instance;
+    }
+
+    // NUEVO: Evaluar acceso a campo (p.nombre)
+    public Object evaluate(FieldAccessNode node) {
+        Object object = evaluate(node.getObject());
+        
+        if (!(object instanceof ClassInstance)) {
+            throw new RuntimeException("No se puede acceder a campo de tipo no-clase");
+        }
+        
+        ClassInstance instance = (ClassInstance) object;
+        Object value = instance.getField(node.getFieldName());
+        
+        if (value == null && !instance.getClassDecl().hasField(node.getFieldName())) {
+            throw new RuntimeException("Campo '" + node.getFieldName() + "' no existe en clase '" + instance.getClassName() + "'");
+        }
+        
+        return value;
+    }
+
+    // NUEVO: Evaluar llamada a método (p.saludar())
+    public Object evaluate(MethodCallNode node) {
+        Object object = evaluate(node.getObject());
+        
+        if (!(object instanceof ClassInstance)) {
+            throw new RuntimeException("No se puede llamar método en tipo no-clase");
+        }
+        
+        ClassInstance instance = (ClassInstance) object;
+        String methodName = node.getMethodName();
+        
+        // Buscar el método en la clase
+        MethodDeclNode method = instance.getClassDecl().getMethod(methodName);
+        if (method == null) {
+            throw new RuntimeException("Método '" + methodName + "' no existe en clase '" + instance.getClassName() + "'");
+        }
+        
+        // Guardar instancia actual (para 'this')
+        Object savedInstance = currentInstance;
+        currentInstance = instance;
+        
+        // Crear nuevo scope para el método
+        scopeStack.push(new HashMap<>());
+        
+        // Agregar 'this' al scope
+        scopeStack.peek().put("this", instance);
+        
+        // TODO: Pasar argumentos a parámetros
+        // Por ahora, métodos sin parámetros funcionarán
+        
+        // Ejecutar cuerpo del método
+        Object result = null;
+        try {
+            if (method.getBody() != null) {
+                result = evaluate(method.getBody());
+            }
+        } catch (ReturnException e) {
+            result = e.getValue();
+        } finally {
+            // Restaurar scope e instancia
+            scopeStack.pop();
+            currentInstance = savedInstance;
+        }
+        
+        return result;
+    }
+
+    // NUEVO: Evaluar declaración de método (solo registra, no ejecuta)
+    public Object evaluate(MethodDeclNode node) {
+        // Los métodos se ejecutan cuando se llaman, no cuando se declaran
+        return null;
+    }
+
     @Override
     public Object evaluate(IdentifierNode node) {
         String name = node.getName();
@@ -320,6 +453,14 @@ public class Interpreter implements Evaluator {
         // Manejar booleanos literales
         if (node.isBooleanLiteral()) {
             return "true".equals(name);
+        }
+        
+        // NUEVO: Manejar 'this'
+        if ("this".equals(name)) {
+            if (currentInstance == null) {
+                throw new RuntimeException("'this' no está disponible fuera de un método de instancia");
+            }
+            return currentInstance;
         }
         
         // Buscar en scopes desde el más interno al más externo
@@ -467,6 +608,43 @@ public class Interpreter implements Evaluator {
         
         public Object getValue() {
             return value;
+        }
+    }
+    public static class ClassInstance {
+        private String className;
+        private Map<String, Object> fields;
+        private ClassDeclNode classDecl;
+        
+        public ClassInstance(String className, ClassDeclNode classDecl) {
+            this.className = className;
+            this.classDecl = classDecl;
+            this.fields = new HashMap<>();
+            
+            // Inicializar campos con valores por defecto
+            for (VariableDeclNode field : classDecl.getFields()) {
+                fields.put(field.getName(), null);
+            }
+        }
+        
+        public String getClassName() {
+            return className;
+        }
+        
+        public Object getField(String fieldName) {
+            return fields.get(fieldName);
+        }
+        
+        public void setField(String fieldName, Object value) {
+            fields.put(fieldName, value);
+        }
+        
+        public ClassDeclNode getClassDecl() {
+            return classDecl;
+        }
+        
+        @Override
+        public String toString() {
+            return className + "@" + Integer.toHexString(hashCode());
         }
     }
 }

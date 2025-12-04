@@ -92,3 +92,48 @@ var promedioGeneral: int = total / 3;
 print("Promedio general: " + promedioGeneral);
 
 
+----CLASESSSSSSSSSS
+class Persona {
+    var nombre: string;
+    
+    function saludar() {
+        print("Buenas noches " + this.nombre);
+    }
+}
+
+var p: Persona = new Persona();
+p.nombre = "Lorenzo";
+p.saludar();
+
+aca otro codigo para probar-------------------------------------------------------
+
+class Mascota {
+    var nombre: string;
+    var tipo: string;
+    
+    function presentar() {
+        print("Mi mascota " + this.nombre + " es un " + this.tipo);
+    }
+}
+
+var miMascota: Mascota = new Mascota();
+miMascota.nombre = "Firulais";
+miMascota.tipo = "perro";
+miMascota.presentar();
+
+otro ejemploooo--------------------------------------------------
+
+class Producto {
+    var nombre: string;
+    var precio: int;
+    
+    function mostrar() {
+        print("Producto: " + this.nombre);
+        print("Precio: $" + this.precio);
+    }
+}
+
+var producto1: Producto = new Producto();
+producto1.nombre = "Laptop";
+producto1.precio = 1000;
+producto1.mostrar();

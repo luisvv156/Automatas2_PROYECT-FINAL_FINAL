@@ -32,6 +32,14 @@ public class Lexer {
         // Booleanos
         keywords.put("true", TokenType.TRUE);
         keywords.put("false", TokenType.FALSE);
+        
+        // NUEVAS PALABRAS CLAVE PARA CLASES
+        keywords.put("class", TokenType.CLASS);
+        keywords.put("new", TokenType.NEW);
+        keywords.put("this", TokenType.THIS);
+        keywords.put("extends", TokenType.EXTENDS);
+        keywords.put("public", TokenType.PUBLIC);
+        keywords.put("private", TokenType.PRIVATE);
     }
 
     public Lexer(String source) {
@@ -58,6 +66,9 @@ public class Lexer {
             case ',': return makeToken(TokenType.COMMA, null);
             case ';': return makeToken(TokenType.SEMICOLON, null);
             case ':': return makeToken(TokenType.COLON, null);
+            
+            // NUEVO: Operador punto para acceso a miembros
+            case '.': return makeToken(TokenType.DOT, null);
 
             case '[': return makeToken(TokenType.LEFT_BRACKET, null);
             case ']': return makeToken(TokenType.RIGHT_BRACKET, null);

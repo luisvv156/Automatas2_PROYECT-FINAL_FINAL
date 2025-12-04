@@ -62,7 +62,6 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         }
         fastTypeCache.put(cacheKey, true);
 
-        // CORREGIDO: Cambiar containsSymbol por resolve para verificar si ya existe
         if (scopeManager.resolve(functionName) != null) {
             errors.agregarError(node.getLineNumber(), 
                 "Función '" + functionName + "' ya declarada", "Semántico");
@@ -86,7 +85,7 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         
         scopeManager.enterScope();
         
-        for (VariableDeclNode param : node.getParameters()) { // CORREGIDO: Tipo específico
+        for (VariableDeclNode param : node.getParameters()) { 
             param.accept(this);
         }
         
@@ -104,9 +103,8 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
     @Override
     public void visit(VariableDeclNode node) {
         enterAnalysis();
-        String varName = node.getName(); // CORREGIDO: Cambiar getVariableName() por getName()
+        String varName = node.getName();
         
-        // CORREGIDO: Cambiar containsSymbol por resolve
         if (scopeManager.resolve(varName) != null) {
             errors.agregarError(node.getLineNumber(), 
                 "Variable '" + varName + "' ya declarada", "Semántico");
@@ -229,7 +227,7 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         String varName = node.getName();
         Symbol symbol = scopeManager.resolve(varName);
         
-        if (symbol == null && !node.isBooleanLiteral()) { // CORREGIDO: Agregar verificación de boolean literal
+        if (symbol == null && !node.isBooleanLiteral()) {
             errors.agregarError(node.getLineNumber(), 
                 "Variable '" + varName + "' no declarada", "Semántico");
         }
@@ -272,7 +270,7 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
     @Override
     public void visit(PrintNode node) {
         enterAnalysis();
-        if (node.getValue() != null) { // CORREGIDO: Verificar si no es null
+        if (node.getValue() != null) {
             node.getValue().accept(this);
         }
         exitAnalysis();
@@ -280,11 +278,12 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
 
     @Override
     public void visit(UnaryExpressionNode node) {
-        enterAnalysis(); // CORREGIDO: Agregar enter/exit analysis
+        enterAnalysis();
         node.getExpression().accept(this);
         exitAnalysis();
     }
-        @Override
+    
+    @Override
     public void visit(ArrayNode node) {
         enterAnalysis();
         
@@ -322,6 +321,145 @@ public class AnalizadorSemanticoAvanzado implements ASTVisitor {
         
         // Verificar que el índice sea numérico
         node.getIndex().accept(this);
+        
+        exitAnalysis();
+    }
+    
+    // ========== NUEVOS MÉTODOS PARA CLASES ==========
+    
+    @Override
+    public void visit(ClassDeclNode node) {
+        enterAnalysis();
+        
+        String className = node.getClassName();
+        
+        // Verificar si la clase ya existe
+        if (scopeManager.classExists(className)) {
+            errors.agregarError(node.getLineNumber(), 
+                "Clase '" + className + "' ya declarada", "Semántico");
+            exitAnalysis();
+            return;
+        }
+        
+        // Crear símbolo de clase
+        ClassSymbol classSymbol = new ClassSymbol(className);
+        
+        // Manejar herencia
+        if (node.getSuperClassName() != null) {
+            classSymbol.setSuperClassName(node.getSuperClassName());
+        }
+        
+        // Registrar la clase
+        scopeManager.declareClass(className, classSymbol);
+        
+        // Entrar al scope de la clase
+        scopeManager.enterScope();
+        
+        // Analizar campos
+        for (VariableDeclNode field : node.getFields()) {
+            field.accept(this);
+            
+            // Registrar campo en la clase
+            Tipo fieldType = Tipo.fromString(field.getType());
+            Symbol fieldSymbol = new Symbol(field.getName(), fieldType, null, false);
+            classSymbol.addField(field.getName(), fieldSymbol);
+        }
+        
+        // Analizar métodos
+        for (MethodDeclNode method : node.getMethods()) {
+            method.accept(this);
+            
+            // Registrar método en la clase
+            Tipo returnType = Tipo.fromString(method.getReturnType().getTypeName());
+            Symbol methodSymbol = Symbol.forMethod(method.getMethodName(), returnType, method);
+            classSymbol.addMethod(method.getMethodName(), methodSymbol);
+        }
+        
+        // Salir del scope de la clase
+        scopeManager.exitScope();
+        
+        exitAnalysis();
+    }
+    
+    @Override
+    public void visit(MethodDeclNode node) {
+        enterAnalysis();
+        
+        String methodName = node.getMethodName();
+        
+        // Entrar al scope del método
+        scopeManager.enterScope();
+        
+        // Registrar parámetros
+        for (VariableDeclNode param : node.getParameters()) {
+            param.accept(this);
+            
+            // Registrar en el scope del método
+            Tipo paramType = Tipo.fromString(param.getType());
+            Symbol paramSymbol = new Symbol(param.getName(), paramType, null, false);
+            scopeManager.declareSymbol(param.getName(), paramSymbol);
+        }
+        
+        // Analizar cuerpo del método
+        if (node.getBody() != null) {
+            node.getBody().accept(this);
+        }
+        
+        // Salir del scope del método
+        scopeManager.exitScope();
+        
+        exitAnalysis();
+    }
+    
+    @Override
+    public void visit(ClassInstanceNode node) {
+        enterAnalysis();
+        
+        String className = node.getClassName();
+        
+        // Verificar que la clase exista
+        if (!scopeManager.classExists(className)) {
+            errors.agregarError(node.getLineNumber(), 
+                "Clase '" + className + "' no declarada", "Semántico");
+            exitAnalysis();
+            return;
+        }
+        
+        // Analizar argumentos del constructor
+        for (ASTNode arg : node.getArguments()) {
+            arg.accept(this);
+        }
+        
+        exitAnalysis();
+    }
+    
+    @Override
+    public void visit(FieldAccessNode node) {
+        enterAnalysis();
+        
+        // Analizar el objeto
+        node.getObject().accept(this);
+        
+        // El campo se verifica en tiempo de ejecución o en análisis más avanzado
+        // Aquí solo nos aseguramos de que el objeto sea válido
+        
+        exitAnalysis();
+    }
+    
+    @Override
+    public void visit(MethodCallNode node) {
+        enterAnalysis();
+        
+        // Analizar el objeto
+        node.getObject().accept(this);
+        
+        // Analizar argumentos
+        for (ASTNode arg : node.getArguments()) {
+            arg.accept(this);
+        }
+        
+        // La verificación del método se hace en análisis más avanzado
+        // Aquí solo nos aseguramos de que la sintaxis sea válida
         
         exitAnalysis();
     }

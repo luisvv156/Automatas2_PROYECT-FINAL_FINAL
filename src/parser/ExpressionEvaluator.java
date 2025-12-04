@@ -138,7 +138,8 @@ public class ExpressionEvaluator implements ASTVisitor {
             result = null;
         }
     }
-        @Override
+
+    @Override
     public void visit(ArrayNode node) {
         // Para evaluación de expresiones, no necesitas implementar esto
         // a menos que estés haciendo evaluación estática
@@ -150,7 +151,42 @@ public class ExpressionEvaluator implements ASTVisitor {
         // a menos que estés haciendo evaluación estática
     }
 
-    // Implementaciones vacías para otros nodos (sin cambios)
+    // ========== NUEVOS MÉTODOS PARA CLASES ==========
+    
+    @Override
+    public void visit(ClassDeclNode node) {
+        // Para evaluación de expresiones, las declaraciones de clase no producen valor
+        result = null;
+    }
+    
+    @Override
+    public void visit(MethodDeclNode node) {
+        // Para evaluación de expresiones, las declaraciones de método no producen valor
+        result = null;
+    }
+    
+    @Override
+    public void visit(ClassInstanceNode node) {
+        // La creación de instancias podría evaluarse si estamos en tiempo de ejecución
+        // pero para evaluación estática, simplemente retornamos null
+        result = null;
+    }
+    
+    @Override
+    public void visit(FieldAccessNode node) {
+        // Para evaluación de expresiones, el acceso a campos podría evaluarse
+        // pero para evaluación estática, simplemente retornamos null
+        result = null;
+    }
+    
+    @Override
+    public void visit(MethodCallNode node) {
+        // Para evaluación de expresiones, las llamadas a método podrían evaluarse
+        // pero para evaluación estática, simplemente retornamos null
+        result = null;
+    }
+
+    // Implementaciones vacías para otros nodos
     @Override public void visit(AssignmentNode node) {}
     @Override public void visit(BlockNode node) {}
     @Override public void visit(CallNode node) {}
